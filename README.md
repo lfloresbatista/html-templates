@@ -49,13 +49,43 @@
 │         ⚠️  SUSPENDIDO          │
 │                                 │
 │   Tu servicio ha sido           │
-│   suspendido temporalmente      │
+│   suspendida temporalmente      │
 │                                 │
 │   [🇺🇸] [🇪🇸]  ← Cambio idioma  │
 └─────────────────────────────────┘
 ```
 
 [📄 Ver README completo →](./suspended)
+
+---
+
+### 2. 📋 IT Service Form
+> Plantilla profesional para formularios de servicio técnico con generación de PDF integrada.
+
+| Estado | Backend | Características |
+|--------|---------|-----------------|
+| ✅ Disponible | PHP | Generación PDF, Login, Responsive |
+
+📁 **Ubicación:** [`/IT-form`](./IT-form)
+
+```
+┌─────────────────────────────────┐
+│  🏢 ITS Panama                  │
+│  Formulario de Servicio Técnico │
+├─────────────────────────────────┤
+│  Cliente: _______________       │
+│  Dirección: ____________        │
+│  Reporte: _______________       │
+│  Diagnóstico: ___________       │
+│  Trabajo Realizado: ______      │
+│                                 │
+│  [📄 Generar PDF]               │
+│                                 │
+│  Powered by OkamiApps           │
+└─────────────────────────────────┘
+```
+
+[📄 Ver README completo →](./IT-form)
 
 ---
 
@@ -66,8 +96,7 @@ Estamos trabajando en más plantillas:
 - [ ] 🏠 Landing Page Genérica
 - [ ] 📧 Página de "En Construcción"
 - [ ] 🎉 Página de Gracias / Confirmación
-- [ ] 📝 Formulario de Contacto
-- [ ] 🔐 Página de Login
+- [ ] 📝 Formulario de Contacto Simple
 - [ ] ❌ Página 404 Personalizada
 
 ¿Tienes una idea? ¡[Sugiere un nuevo template](https://github.com/lfloresbatista/html-templates/issues)!
@@ -110,6 +139,19 @@ html-templates/
 │   ├── logo.png              # Logo del footer
 │   ├── en.png                # Bandera inglés
 │   └── es.png                # Bandera español
+│
+├── IT-form/                  # 📋 Template: Formulario de Servicio Técnico
+│   ├── README.md             # Documentación específica
+│   ├── index.html            # Formulario principal
+│   ├── login.html            # Página de login
+│   ├── styles.css            # Estilos CSS
+│   ├── script.js             # Lógica JavaScript
+│   ├── logo.png              # Logo principal
+│   ├── logo2.png             # Logo footer
+│   ├── procesar_login.php    # Autenticación
+│   ├── print_pdf.php         # Generador PDF
+│   ├── dist/                 # Librerías JS
+│   └── tcpdf/                # Librería PHP TCPDF
 │
 └── .../                      # 🔜 Más templates próximamente
 ```
