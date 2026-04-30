@@ -1,0 +1,150 @@
+body {
+    font-family: Arial, sans-serif;
+    background-color: #c9f0ff;
+    margin: 0;
+    padding: 0;
+  }
+
+  .btn-pdf {
+    background-color: #4CAF50;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    margin: 20px;
+    transition: background-color 0.3s;
+  }
+
+  .btn-pdf:hover {
+    background-color: #45a049;
+  }
+ 
+  #loginContainer {
+    background-color: #fff;
+    max-width: 400px;
+    margin: 100px auto;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  } 
+
+  #encabezado {
+    text-align: center;
+    padding: 20px; /* Espaciado alrededor del encabezado */
+    background-color: #c9f0ff; /* Color de fondo blanco para el encabezado */
+  }
+  
+  #logo {
+    max-width: 35%; /* Asegura que el logo no exceda el ancho del contenedor */
+    height: auto;
+  }
+
+  #titulo {
+    font-family: 'AbeeZee', sans-serif; /* Fuente AbeeZee */
+    color: #001F3F; /* Color azul marino */
+    text-transform: uppercase; /* Convierte el texto a mayúsculas cerradas */
+    margin-top: 30px; /* Espaciado superior para separar el título del logo */
+    margin-bottom: 0px;
+  }
+
+  #footer {
+    text-align: center;
+    padding: 10px; /* Espaciado alrededor del footer */
+    background-color: #c9f0ff; /* Color de fondo gris */
+  }
+  
+  #poweredByText {
+    color: #808080; /* Color gris */
+    margin-right: 5px; /* Espaciado a la derecha del texto "Powered by" */
+  }
+
+  #poweredByContainer {
+    display: inline-block; /* Coloca el logo en línea con el texto */
+  }
+  
+  #poweredByLogo {
+    max-width: 100px; /* Tamaño máximo del logo */
+    height: auto;
+  }
+
+  form {
+    max-width: 600px;
+    margin-top: 1px;
+    margin: 20px auto;
+    padding: 50px;
+    background-color: #fff;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    border-radius: 8px;
+    display: grid;
+    gap: 15px;
+  }
+  
+  .fila {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+  }
+
+  .columna {
+    flex: 1;
+    margin-right: 10px;
+  }
+  
+  .columna-full {
+    flex: 2;
+  }
+  
+  div {
+    margin-bottom: 15px;
+  }
+  
+  label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+  }
+  
+  input {
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  
+  textarea {
+    width: 100%;
+    padding: 8px;
+    box-sizing: border-box;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+
+  button {
+    background-color: #4caf50;
+    color: #fff;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  button:hover {
+    background-color: #45a049;
+  }
+  
+  p {
+    margin: 0;
+  }
+  
+  /* Opcional: Estilo para la firma */
+  p:after {
+    content: "_".repeat(25);
+  }
+  

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Formulario de Servicio</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="dist/html2pdf.bundle.js"></script>
+  <script src="dist/FileSaver.min.js"></script>
+  
+  <link rel="icon" type="image/x-icon" href="data:image/x-icon;,">
+</head>
+<body>
+    <div id="encabezado">
+        <img src="logo.png" alt="ITS Panama" id="logo">
+        <h2 id="titulo">Formulario de Servicio Técnico</h2>
+    </div>
+    <form id="serviceForm" action="print_pdf.php" method="post" onsubmit="return false;">
+    <div class="fila">
+      <div class="columna">
+        <label for="cliente">Cliente:</label>
+        <input type="text" id="cliente" name="cliente" required>
+      </div>
+      <div class="columna">
+        <label for="fecha">Fecha y Hora:</label>
+        <input type="datetime-local" id="fecha" name="fecha" required>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="columna">
+        <label for="direccion">Dirección:</label>
+        <input type="text" id="direccion" name="direccion" required>
+      </div>
+      <div class="columna">
+        <label for="ticket">Ticket No.:</label>
+        <input type="text" id="ticket" name="ticket" required>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="columna columna-full">
+        <label for="reporte">Reporte del Cliente:</label>
+        <textarea id="reporte" name="reporte" rows="4" required></textarea>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="columna">
+        <label for="diagnostico">Diagnóstico Técnico:</label>
+        <textarea id="diagnostico" name="diagnostico" rows="4" required></textarea>
+      </div>
+      <div class="columna">
+        <label for="trabajoRealizado">Trabajo Realizado:</label>
+        <textarea id="trabajoRealizado" name="trabajoRealizado" rows="4" required></textarea>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="columna columna-full">
+        <label for="observaciones">Observaciones/Recomendaciones:</label>
+        <textarea id="observaciones" name="observaciones" rows="4" required></textarea>
+      </div>
+    </div>
+    <div class="fila">
+      <div class="columna">
+        <label for="recibidoConforme">Recibido Conforme:</label>
+        <input type="text" id="recibidoConforme" name="recibidoConforme" required>
+      </div>
+      <div class="columna">
+        <label for="firmaTecnico">Firma Técnico:</label>
+        <input type="text" id="firmaTecnico" name="firmaTecnico" required>
+      </div>
+    </div>
+
+    </form>
+    <div id="mensaje" style="display: none; padding: 10px; margin: 10px; text-align: center;"></div>
+    <button onclick="imprimirPDF()" class="btn-pdf">Generar PDF</button>
+  <div id="footer">
+    <p id="poweredByText">Powered by</p>
+    <div id="poweredByContainer">
+        <img src="logo2.png" alt="OkamiApps" id="poweredByLogo">
+    </div>
+  </div>
+  <!--<script src="https://rawgit.com/eKoopmans/html2pdf/master/dist/html2pdf.bundle.js"></script>
+  <script src="script.js"></script>-->
+  <script src="script.js"></script>
+  </body>
+</html>
