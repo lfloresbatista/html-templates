@@ -1,1 +1,34 @@
-Nothing should be ignored based on the provided file changes. The changes only include source/config files (.md files) and no build artifacts, dependencies, or temp files.
+```gitignore
+# Dependencies
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+```

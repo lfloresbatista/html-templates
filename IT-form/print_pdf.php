@@ -1,116 +1,215 @@
 <?php
-// Display errors
+/**
+ * Generador de PDF para Formulario de Servicio Técnico
+ * Usa TCPDF para generar documentos PDF profesionales
+ */
+
+// Configuración de errores (desactivar en producción)
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0); // Cambiar a 0 en producción
 
 // Incluye la clase TCPDF
-require_once('tcpdf/tcpdf.php');
+require_once __DIR__ . '/tcpdf/tcpdf.php';
 
-// Obtén los datos del formulario
-$cliente = $_POST['cliente'];
-$fecha = $_POST['fecha'];
-$direccion = $_POST['direccion'];
-$ticket = $_POST['ticket'];
-$reporteCliente = $_POST['reporte'];
-$diagnosticoTecnico = $_POST['diagnostico'];
-$trabajoRealizado = $_POST['trabajoRealizado'];
-$observaciones = $_POST['observaciones'];
-$recibidoConforme = $_POST['recibidoConforme'];
-$firmaTecnico = $_POST['firmaTecnico'];
+/**
+ * Función para sanitizar entradas
+ * @param string $data Datos a sanitizar
+ * @return string Datos sanitizados
+ */
+function sanitizeInput($data) {
+    return htmlspecialchars(trim($data), ENT_QUOTES, 'UTF-8');
+}
 
-// Crea una nueva instancia de TCPDF
-$pdf = new TCPDF('P', 'mm', 'Letter', true, 'UTF-8', TRUE);
+/**
+ * Función para validar que los datos requeridos existan
+ * @param array $requiredFields Campos requeridos
+ * @param array $postData Datos POST
+ * @return bool True si todos los campos existen
+ */
+function validateRequiredFields($requiredFields, $postData) {
+    foreach ($requiredFields as $field) {
+        if (!isset($postData[$field]) || empty(trim($postData[$field]))) {
+            return false;
+        }
+    }
+    return true;
+}
 
-// Configura el estilo del PDF
-$pdf->SetFont('times', 'B', 12);
+// Verificar método de solicitud
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    echo json_encode(['error' => 'Método no permitido']);
+    exit;
+}
 
-// Establece el tamaño de página
-//$pdf->SetPageSize('letter');
+// Campos requeridos
+$requiredFields = [
+    'cliente', 'fecha', 'direccion', 'ticket', 
+    'reporte', 'diagnostico', 'trabajoRealizado', 
+    'observaciones', 'recibidoConforme', 'firmaTecnico'
+];
 
-// Agrega una página al documento
+// Validar campos requeridos
+if (!validateRequiredFields($requiredFields, $_POST)) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Campos requeridos incompletos']);
+    exit;
+}
+
+// Obtener y sanitizar los datos del formulario
+$data = [
+    'cliente' => sanitizeInput($_POST['cliente']),
+    'fecha' => sanitizeInput($_POST['fecha']),
+    'direccion' => sanitizeInput($_POST['direccion']),
+    'ticket' => sanitizeInput($_POST['ticket']),
+    'reporteCliente' => sanitizeInput($_POST['reporte']),
+    'diagnosticoTecnico' => sanitizeInput($_POST['diagnostico']),
+    'trabajoRealizado' => sanitizeInput($_POST['trabajoRealizado']),
+    'observaciones' => sanitizeInput($_POST['observaciones']),
+    'recibidoConforme' => sanitizeInput($_POST['recibidoConforme']),
+    'firmaTecnico' => sanitizeInput($_POST['firmaTecnico'])
+];
+
+// Crear una nueva instancia de TCPDF
+$pdf = new TCPDF('P', 'mm', 'Letter', true, 'UTF-8', true);
+
+// Configurar metadatos del PDF
+$pdf->SetCreator('ITS Panama - Sistema de Servicio Técnico');
+$pdf->SetAuthor('ITS Panama');
+$pdf->SetTitle('Formulario de Servicio Técnico - Ticket ' . $data['ticket']);
+$pdf->SetSubject('Reporte de Servicio Técnico');
+$pdf->SetKeywords('Servicio Técnico, Reporte, Ticket');
+
+// Configurar fuentes
+$pdf->SetFont('helvetica', '', 11);
+
+// Agregar una página al documento
 $pdf->AddPage();
 
-// Agrega el logo
-//$logo = 'logo.png';
-//$logoWidth = 40;  // Ancho original del logo en milímetros
-//$logoHeight = 40; // Altura original del logo en milímetros
-//$pdf->Image($logo, 10, 10, $logoWidth * 0.35, $logoHeight * 0.35);
+// Encabezado con logo (opcional)
+/*
+$logo = __DIR__ . '/logo.png';
+if (file_exists($logo)) {
+    $pdf->Image($logo, 10, 10, 30, 0, 'PNG');
+}
+*/
 
-// Agrega el título
-$pdf->SetX($pdf->GetPageWidth() - 60);
-$pdf->Cell(60, 10, 'Formulario de Servicio Técnico', 0, 1, 'R');
+// Título centrado
+$pdf->SetFont('helvetica', 'B', 16);
+$pdf->Cell(0, 10, 'FORMULARIO DE SERVICIO TÉCNICO', 0, 1, 'C');
+$pdf->SetFont('helvetica', '', 11);
+$pdf->Ln(5);
+
+// Línea de separación
+$pdf->Line(10, 35, $pdf->GetPageWidth() - 10, 35);
 $pdf->Ln(10);
 
-// Dibuja la línea de separación
-$pdf->Line(10, 60, $pdf->GetPageWidth() - 10, 60);
-
-// Configura el contenido del formulario
-$contenidoY = 70;
+// Información del servicio
+$contenidoY = 50;
+$columnWidth = ($pdf->GetPageWidth() - 40) / 2;
 
 // Cliente
+$pdf->SetFont('helvetica', 'B', 11);
 $pdf->SetXY(20, $contenidoY);
-$pdf->Cell(0, 10, 'Cliente: ' . $cliente, 0, 1);
+$pdf->Cell($columnWidth, 8, 'Cliente:', 0, 0);
+$pdf->SetFont('helvetica', '', 11);
+$pdf->Cell($columnWidth, 8, $data['cliente'], 0, 1);
 
 // Fecha
-$pdf->SetXY($pdf->GetPageWidth() / 2 + 10, $contenidoY);
-$pdf->Cell(0, 10, 'Fecha y Hora: ' . $fecha, 0, 1);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20 + $columnWidth, $contenidoY);
+$pdf->Cell($columnWidth, 8, 'Fecha y Hora:', 0, 0);
+$pdf->SetFont('helvetica', '', 11);
+$pdf->Cell($columnWidth, 8, $data['fecha'], 0, 1);
 
 // Dirección
-$pdf->SetXY(20, $contenidoY + 10);
-$pdf->Cell(0, 10, 'Dirección: ' . $direccion, 0, 1);
+$contenidoY += 10;
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20, $contenidoY);
+$pdf->Cell($columnWidth, 8, 'Dirección:', 0, 0);
+$pdf->SetFont('helvetica', '', 11);
+$pdf->Cell($columnWidth, 8, $data['direccion'], 0, 1);
 
 // Ticket
-$pdf->SetXY($pdf->GetPageWidth() / 2 + 10, $contenidoY + 10);
-$pdf->Cell(0, 10, 'Ticket No.: ' . $ticket, 0, 1);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20 + $columnWidth, $contenidoY);
+$pdf->Cell($columnWidth, 8, 'Ticket No.:', 0, 0);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->Cell($columnWidth, 8, $data['ticket'], 0, 1);
+
+// Separador
+$contenidoY += 15;
+$pdf->SetFont('helvetica', 'B', 12);
+$pdf->SetFillColor(200, 220, 240);
+$pdf->SetXY(20, $contenidoY);
+$pdf->Cell($columnWidth * 2, 8, 'DETALLES DEL SERVICIO', 0, 1, 'C', true);
 
 // Reporte del Cliente
-$pdf->SetXY(20, $contenidoY + 20);
-$pdf->Cell(0, 10, 'Reporte del Cliente: ' . $reporteCliente, 0, 1);
+$contenidoY += 12;
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20, $contenidoY);
+$pdf->MultiCell($columnWidth, 6, "Reporte del Cliente:\n", 0, 'L', false, 0);
+$pdf->SetFont('helvetica', '', 10);
+$pdf->SetXY(20, $contenidoY + 6);
+$pdf->MultiCell($columnWidth, 5, $data['reporteCliente'], 0, 'J', false, 0);
 
 // Diagnóstico Técnico
-$pdf->SetXY($pdf->GetPageWidth() / 2 + 10, $contenidoY + 20);
-$pdf->Cell(0, 10, 'Diagnóstico Técnico: ' . $diagnosticoTecnico, 0, 1);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20 + $columnWidth, $contenidoY);
+$pdf->MultiCell($columnWidth, 6, "Diagnóstico Técnico:\n", 0, 'L', false, 0);
+$pdf->SetFont('helvetica', '', 10);
+$pdf->SetXY(20 + $columnWidth, $contenidoY + 6);
+$pdf->MultiCell($columnWidth, 5, $data['diagnosticoTecnico'], 0, 'J', false, 0);
 
 // Trabajo Realizado
-$pdf->SetXY(20, $contenidoY + 30);
-$pdf->Cell(0, 10, 'Trabajo Realizado: ' . $trabajoRealizado, 0, 1);
+$contenidoY += 35;
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20, $contenidoY);
+$pdf->MultiCell($columnWidth, 6, "Trabajo Realizado:\n", 0, 'L', false, 0);
+$pdf->SetFont('helvetica', '', 10);
+$pdf->SetXY(20, $contenidoY + 6);
+$pdf->MultiCell($columnWidth, 5, $data['trabajoRealizado'], 0, 'J', false, 0);
 
 // Observaciones
-$pdf->SetXY($pdf->GetPageWidth() / 2 + 10, $contenidoY + 30);
-$pdf->Cell(0, 10, 'Observaciones/Recomendaciones: ' . $observaciones, 0, 1);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->SetXY(20 + $columnWidth, $contenidoY);
+$pdf->MultiCell($columnWidth, 6, "Observaciones/Recomendaciones:\n", 0, 'L', false, 0);
+$pdf->SetFont('helvetica', '', 10);
+$pdf->SetXY(20 + $columnWidth, $contenidoY + 6);
+$pdf->MultiCell($columnWidth, 5, $data['observaciones'], 0, 'J', false, 0);
 
-// Línea de firma 1
-$pdf->SetXY(20, $contenidoY + 40);
-$pdf->Cell(0, 10, '_________________________', 0, 1);
+// Sección de firmas
+$contenidoY += 40;
+$pdf->Line(10, $contenidoY, $pdf->GetPageWidth() - 10, $contenidoY);
+$contenidoY += 15;
 
-// Línea de firma 2
-$pdf->SetXY($pdf->GetPageWidth() / 2 + 10, $contenidoY + 40);
-$pdf->Cell(0, 10, '_________________________', 0, 1);
-
-// Recibido Conforme
-$pdf->SetXY(20, $contenidoY + 50);
-$pdf->Cell(0, 10, 'Recibido Conforme: ' . $recibidoConforme, 0, 1);
+// Firma Cliente
+$pdf->SetXY(20, $contenidoY);
+$pdf->Cell($columnWidth, 10, '_________________________', 0, 1, 'C');
+$pdf->SetXY(20, $contenidoY + 7);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->Cell($columnWidth, 8, 'Recibido Conforme', 0, 1, 'C');
+$pdf->SetFont('helvetica', '', 10);
+$pdf->Cell($columnWidth, 6, $data['recibidoConforme'], 0, 1, 'C');
 
 // Firma Técnico
-$pdf->SetXY($pdf->GetPageWidth() / 2 + 10, $contenidoY + 50);
-$pdf->Cell(0, 10, 'Firma Técnico: ' . $firmaTecnico, 0, 1);
+$pdf->SetXY(20 + $columnWidth, $contenidoY);
+$pdf->Cell($columnWidth, 10, '_________________________', 0, 1, 'C');
+$pdf->SetXY(20 + $columnWidth, $contenidoY + 7);
+$pdf->SetFont('helvetica', 'B', 11);
+$pdf->Cell($columnWidth, 8, 'Firma Técnico', 0, 1, 'C');
+$pdf->SetFont('helvetica', '', 10);
+$pdf->Cell($columnWidth, 6, $data['firmaTecnico'], 0, 1, 'C');
 
-// Dibuja la línea de separación
-$pdf->Line(10, $contenidoY + 60, $pdf->GetPageWidth() - 10, $contenidoY + 60);
+// Pie de página
+$pdf->SetY(-25);
+$pdf->SetFont('helvetica', 'I', 9);
+$pdf->SetTextColor(100, 100, 100);
+$pdf->Cell(0, 5, 'ITS Panama | soporte@itspanama.net | www.itspanama.net', 0, 1, 'C');
+$pdf->Cell(0, 5, 'Página ' . $pdf->getPage() . ' de ' . $pdf->getAliasNumPage(), 0, 1, 'C');
 
-/// Configura el pie de página
-$pieTextY = $pdf->GetPageHeight() - 10;
-$pdf->SetFont('times', '', 11);
-
-// Texto a la izquierda
-$pdf->Text(20, $pieTextY, 'ITS Panama | soporte@itspanama.net | www.itspanama.net');
-
-// Texto a la derecha (número total de páginas)
-$numeroTotalPaginas = $pdf->getNumPages();
-$pdf->Text($pdf->GetPageWidth() - 80, $pieTextY, 'Página ' . $pdf->getPage() . ' de ' . $numeroTotalPaginas);
-
-// Define el nombre del archivo de salida
-$nombreArchivo = $cliente . '_' . str_replace([' ', ':'], '_', $fecha) . '.pdf';
+// Definir nombre del archivo seguro
+$nombreArchivo = 'servicio_' . preg_replace('/[^A-Za-z0-9_]/', '_', $data['cliente']) . '_' . date('Ymd_His') . '.pdf';
 
 // Salida del PDF (descarga el archivo)
 $pdf->Output($nombreArchivo, 'D');
