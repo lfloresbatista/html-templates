@@ -1,1 +1,1 @@
-Nothing needs to be added to .gitignore since the changes only include markdown files (.md) which are source/config files.
+Nothing should be ignored based on the provided file changes. The changes only include source/config files (.md files) and no build artifacts, dependencies, or temp files.
