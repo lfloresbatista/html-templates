@@ -2,26 +2,11 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Iniciar Sesión</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="icon" type="image/x-icon" href="data:image/x-icon;,">
+  <meta http-equiv="refresh" content="0;url=admin/login.php">
+  <title>Redirigiendo…</title>
+  <script>location.replace('admin/login.php');</script>
 </head>
 <body>
-    <div id="encabezado">
-        <img src="logo.png" alt="ITS Panama" id="logo">
-    </div>
-  <div id="loginContainer">
-    <h2>Iniciar Sesión</h2>
-    <form action="procesar_login.php" method="post">
-      <label for="usuario">Usuario:</label>
-      <input type="text" id="usuario" name="usuario" required>
-
-      <label for="contrasena">Contraseña:</label>
-      <input type="password" id="contrasena" name="contrasena" required>
-
-      <button type="submit">Iniciar Sesión</button>
-    </form>
-  </div>
+  <p>El login unificado está en <a href="admin/login.php">admin/login.php</a>.</p>
 </body>
 </html>

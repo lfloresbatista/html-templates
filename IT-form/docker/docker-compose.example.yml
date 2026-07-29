@@ -1,0 +1,67 @@
+# IT-form stack de ejemplo (MySQL + PHP Apache)
+# Uso:
+#   cd IT-form
+#   cp docker/.env.example .env
+#   # editar secretos en .env
+#   docker compose -f docker/docker-compose.example.yml --env-file .env up -d --build
+#
+# App: http://localhost:8088/
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-itformdb}
+      MYSQL_USER: ${DB_USER:-itform_usr}
+      MYSQL_PASSWORD: ${DB_PASS:?set DB_PASS in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+    volumes:
+      - itform_db_data:/var/lib/mysql
+      - ../database/init_database.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8088}:80"
+    environment:
+      DB_DRIVER: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-itformdb}
+      DB_USER: ${DB_USER:-itform_usr}
+      DB_PASS: ${DB_PASS}
+      ALLOW_PUBLIC_SAVE: ${ALLOW_PUBLIC_SAVE:-0}
+      SESSION_NAME: ${SESSION_NAME:-ITFORMSESSID}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
+      FORCE_SECURE_COOKIE: ${FORCE_SECURE_COOKIE:-0}
+      LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
+      LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
+      API_RATE_MAX: ${API_RATE_MAX:-30}
+      API_RATE_WINDOW: ${API_RATE_WINDOW:-60}
+    volumes:
+      - ../:/var/www/html
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  itform_db_data:

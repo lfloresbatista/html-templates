@@ -1,80 +1,117 @@
 <?php
 /**
- * Configuración de la base de datos
- * Datos de conexión para MySQL/MariaDB
+ * Conexión PDO (MySQL o SQLite) vía variables de entorno.
  */
+require_once __DIR__ . '/env.php';
 
-// Configuración de la base de datos
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'itspanama_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
-
-// Opciones de PDO
-define('PDO_OPTIONS', [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    PDO::ATTR_EMULATE_PREPARES => false,
-]);
-
-/**
- * Clase de conexión a la base de datos (Singleton)
- */
-class Database {
+class Database
+{
     private static $instance = null;
+    /** @var PDO */
     private $connection;
-    
-    /**
-     * Constructor privado para prevenir instanciación directa
-     */
-    private function __construct() {
+    /** @var string */
+    private $driver;
+
+    private function __construct()
+    {
+        $this->driver = strtolower(itform_env('DB_DRIVER', 'mysql'));
+        $options = [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+        ];
+
         try {
-            $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
-            $this->connection = new PDO($dsn, DB_USER, DB_PASS, PDO_OPTIONS);
+            if ($this->driver === 'sqlite') {
+                $path = itform_env('DB_PATH', dirname(__DIR__) . '/storage/db/itform.sqlite');
+                $dir = dirname($path);
+                if (!is_dir($dir)) {
+                    mkdir($dir, 0750, true);
+                }
+                $this->connection = new PDO('sqlite:' . $path, null, null, $options);
+                $this->connection->exec('PRAGMA foreign_keys = ON');
+            } else {
+                $host = itform_env('DB_HOST', '127.0.0.1');
+                $port = itform_env('DB_PORT', '3306');
+                $name = itform_env('DB_NAME', 'itformdb');
+                $user = itform_env('DB_USER', 'itform_usr');
+                $pass = itform_env('DB_PASS', '');
+                $charset = itform_env('DB_CHARSET', 'utf8mb4');
+                $dsn = "mysql:host={$host};port={$port};dbname={$name};charset={$charset}";
+                $this->connection = new PDO($dsn, $user, $pass, $options);
+            }
         } catch (PDOException $e) {
-            error_log("Error de conexión a la base de datos: " . $e->getMessage());
-            die("Error de conexión a la base de datos");
+            error_log('IT-form DB connection error: ' . $e->getMessage());
+            http_response_code(500);
+            // Nunca filtrar detalles al cliente
+            die('Error de conexión a la base de datos');
         }
     }
-    
-    /**
-     * Obtener instancia única de la conexión
-     * @return Database
-     */
-    public static function getInstance() {
+
+    public static function getInstance(): self
+    {
         if (self::$instance === null) {
             self::$instance = new self();
         }
         return self::$instance;
     }
-    
-    /**
-     * Obtener conexión PDO
-     * @return PDO
-     */
-    public function getConnection() {
+
+    /** Reinicia la conexión (útil en scripts CLI de init). */
+    public static function resetInstance(): void
+    {
+        self::$instance = null;
+    }
+
+    public function getConnection(): PDO
+    {
         return $this->connection;
     }
-    
-    /**
-     * Prevenir clonación
-     */
+
+    public function getDriver(): string
+    {
+        return $this->driver;
+    }
+
     private function __clone() {}
-    
-    /**
-     * Prevenir deserialización
-     */
-    public function __wakeup() {
-        throw new Exception("Cannot unserialize singleton");
+
+    public function __wakeup()
+    {
+        throw new Exception('Cannot unserialize singleton');
     }
 }
 
-/**
- * Función helper para obtener la conexión
- * @return PDO
- */
-function getDB() {
+function getDB(): PDO
+{
     return Database::getInstance()->getConnection();
 }
-?>
+
+function itform_db_driver(): string
+{
+    return Database::getInstance()->getDriver();
+}
+
+/**
+ * Genera número AAAA-MM-NNNN (compatible MySQL trigger y SQLite app-side).
+ */
+function itform_next_sequence(PDO $db): string
+{
+    $year = date('Y');
+    $month = date('m');
+    $prefix = $year . '-' . $month . '-';
+    $driver = itform_db_driver();
+
+    if ($driver === 'sqlite') {
+        $stmt = $db->prepare("SELECT numero_secuencia FROM servicios WHERE numero_secuencia LIKE :p ORDER BY id DESC LIMIT 1");
+        $stmt->execute([':p' => $prefix . '%']);
+        $last = $stmt->fetchColumn();
+        $n = 1;
+        if ($last) {
+            $parts = explode('-', $last);
+            $n = ((int) end($parts)) + 1;
+        }
+        return $prefix . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+    }
+
+    // MySQL: el trigger asigna; devolver placeholder vacío y leer tras insert
+    return '';
+}

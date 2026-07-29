@@ -1,0 +1,33 @@
+# Apache — endurecimiento IT-form
+Options -Indexes
+ServerSignature Off
+
+<IfModule mod_authz_core.c>
+    <FilesMatch "(^\.env|^\.git|composer\.(json|lock)|secret$|\.sql$|\.sqlite$|\.log$|\.bak$|router\.php$)">
+        Require all denied
+    </FilesMatch>
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Bloquear paths sensibles
+    RewriteRule ^(config|storage|database|docker|tcpdf/examples|tcpdf/tools)(/|$) - [F,L]
+    RewriteRule (^|/)\. - [F,L]
+    # Bloquear PHP en uploads
+    RewriteRule ^uploads/.*\.(?i:php|phtml|phar|cgi|pl|py|sh)$ - [F,L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+DirectoryIndex index.php index.html
+
+# PHP hardening hints (si AllowOverride permite)
+<IfModule mod_php.c>
+    php_flag display_errors Off
+    php_flag expose_php Off
+</IfModule>

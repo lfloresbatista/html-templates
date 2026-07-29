@@ -1,34 +1,35 @@
-```gitignore
-# Dependencies
-vendor/
-
-# Logs and temp files
-*.log
-*.tmp
-
-# Environment
+# Secrets & local env
 .env
 .env.local
-*.env.*
+IT-form/secret
+IT-form/storage/db/*.sqlite
+IT-form/storage/db/*.sqlite-*
+IT-form/storage/logs/*
+!IT-form/storage/logs/.gitkeep
+IT-form/.login_attempts
 
-# Editor/IDE files
+# Dependencies / bloat
+vendor/
+*.zip
+IT-form/tcpdf/main.zip
+IT-form/master.zip
+
+# Logs and temp
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# PDFs de prueba locales (descargables para validación manual; no versionar)
+IT-form/pdfs-test/
 
-# Build artifacts
-dist/
-build/
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.a
-*.out
-```
+# Uploads de logos de clientes (runtime)
+IT-form/uploads/*
+!IT-form/uploads/.htaccess
+!IT-form/uploads/.gitkeep
+
+# Note: dist/ IS tracked (runtime assets without npm build)

@@ -1,279 +1,162 @@
-# Guía de Instalación y Configuración
+# Instalación IT-form
 
-## Requisitos del Sistema
+Dos modos soportados: **on-premise** (LAMP/LEMP) y **Docker**.
 
-- **Servidor Web**: Apache 2.4+ o Nginx
-- **PHP**: 7.4 o superior
-- **Base de Datos**: MySQL 5.7+ o MariaDB 10.3+
-- **Extensiones PHP requeridas**: PDO, pdo_mysql, json
+## Requisitos
 
-## Instalación Paso a Paso
+| Componente | Versión |
+|------------|---------|
+| PHP | 8.1+ (`pdo`, `pdo_mysql` o `pdo_sqlite`, `session`, `json`, `mbstring`, `fileinfo`; `gd` recomendado) |
+| Base de datos | MySQL 8 / MariaDB 10.4+ (**nombre:** `itformdb`, **usuario:** `itform_usr`) |
+| Servidor web | Apache 2.4+ (mod_rewrite) o Nginx + PHP-FPM |
 
-### 1. Clonar o Copiar Archivos
+---
 
-```bash
-# Copiar archivos al directorio del servidor web
-cp -r IT-form /var/www/html/
-```
+## Opción A — On-premise
 
-### 2. Configurar Base de Datos
-
-#### Opción A: Usando MySQL/MariaDB CLI
+### 1. Copiar aplicación
 
 ```bash
-# Ingresar a MySQL
-mysql -u root -p
-
-# Ejecutar script de inicialización
-source /var/www/html/IT-form/database/init_database.sql;
-
-# Salir de MySQL
-exit;
+cp -r IT-form /var/www/html/itform
+cd /var/www/html/itform
 ```
 
-#### Opción B: Usando phpMyAdmin
-
-1. Abrir phpMyAdmin en el navegador
-2. Ir a la pestaña "Importar"
-3. Seleccionar el archivo `database/init_database.sql`
-4. Hacer clic en "Continuar"
-
-### 3. Configurar Conexión a la Base de Datos
-
-Editar el archivo `config/database.php`:
-
-```php
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'itspanama_db');
-define('DB_USER', 'tu_usuario');
-define('DB_PASS', 'tu_contraseña');
-define('DB_CHARSET', 'utf8mb4');
-```
-
-### 4. Establecer Permisos
+### 2. Base de datos MySQL/MariaDB
 
 ```bash
-# Establecer permisos correctos
-chmod -R 755 /var/www/html/IT-form
-chown -R www-data:www-data /var/www/html/IT-form
+sudo mysql -u root -p <<'SQL'
+CREATE DATABASE IF NOT EXISTS itformdb
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'itform_usr'@'localhost' IDENTIFIED BY 'CLAVE_SEGURA';
+GRANT SELECT, INSERT, UPDATE, DELETE ON itformdb.* TO 'itform_usr'@'localhost';
+FLUSH PRIVILEGES;
+SQL
 
-# El archivo .login_attempts debe ser escribible
-touch /var/www/html/IT-form/.login_attempts
-chmod 666 /var/www/html/IT-form/.login_attempts
+mysql -u root -p itformdb < database/init_database.sql
 ```
 
-### 5. Configurar Apache (Opcional)
+> El script `database/init_database.sql` crea tablas en `itformdb`.  
+> Si el usuario `itform_usr` no puede crear DB, ejecute el SQL como root y otorgue permisos DML.
 
-Crear archivo `.htaccess` en la raíz:
+### 3. Entorno
+
+```bash
+cp .env.example .env
+# Editar:
+# DB_DRIVER=mysql
+# DB_HOST=127.0.0.1
+# DB_NAME=itformdb
+# DB_USER=itform_usr
+# DB_PASS=CLAVE_SEGURA
+# ALLOW_PUBLIC_SAVE=0
+```
+
+### 4. Permisos
+
+```bash
+sudo chown -R www-data:www-data /var/www/html/itform
+sudo find /var/www/html/itform -type d -exec chmod 755 {} \;
+sudo find /var/www/html/itform -type f -exec chmod 644 {} \;
+sudo chmod 640 /var/www/html/itform/.env
+sudo mkdir -p storage/db storage/logs uploads
+sudo chown -R www-data:www-data storage uploads
+sudo chmod 750 storage storage/db storage/logs uploads
+```
+
+### 5. Apache (ejemplo)
 
 ```apache
-RewriteEngine On
-
-# Redirigir al login si no está autenticado
-RewriteCond %{REQUEST_URI} ^/admin/
-RewriteRule ^$ admin/login.php [L]
-
-# Proteger archivos de configuración
-<FilesMatch "^\.">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
-
-<FilesMatch "\.(sql|log|ini)$">
-    Order allow,deny
-    Deny from all
-</FilesMatch>
+<VirtualHost *:80>
+    ServerName itform.local
+    DocumentRoot /var/www/html/itform
+    <Directory /var/www/html/itform>
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
 ```
 
-## Usuarios por Defecto
+Habilite HTTPS (Let’s Encrypt) y `FORCE_SECURE_COOKIE=1` en producción.
 
-### Administrador
-- **Usuario**: `admin`
-- **Contraseña**: `admin123`
-- **Rol**: Administrador (acceso completo)
+### 6. Usuarios iniciales
 
-### Técnico
-- **Usuario**: `itspanama`
-- **Contraseña**: `tecnico123`
-- **Rol**: Técnico
+| Usuario | Password | Rol |
+|---------|----------|-----|
+| admin | admin123 | admin |
+| itspanama | tecnico123 | tecnico |
 
-**⚠️ IMPORTANTE**: Cambie las contraseñas inmediatamente después de la instalación!
+**Cambiar contraseñas de inmediato** (Admin → Usuarios).
 
-## Estructura de la Base de Datos
+### 7. Checklist seguridad producción
 
-### Tablas Principales
+- [ ] HTTPS + cookies seguras
+- [ ] `.env` no legible vía web
+- [ ] `ALLOW_PUBLIC_SAVE=0`
+- [ ] Usuario BD least-privilege (`itform_usr`)
+- [ ] Backups de `itformdb` y `uploads/`
+- [ ] Rotar passwords seed
 
-1. **configuracion** - Configuración de empresa (logo, colores, etc.)
-2. **usuarios** - Usuarios del sistema con roles y permisos
-3. **servicios** - Informes de servicio técnico con numeración secuencial
-4. **auditoria** - Logs de auditoría de todas las acciones
-5. **sesiones** - Gestión de sesiones de usuario
+---
 
-### Numeración Secuencial
+## Opción B — Docker
 
-Los servicios se numeran automáticamente con el formato: `AAAA-MM-NNNN`
-- `AAAA`: Año actual
-- `MM`: Mes actual (01-12)
-- `NNNN`: Consecutivo mensual (0001-9999)
+Archivos en `docker/`:
 
-Ejemplo: `2025-04-0001`
+- `Dockerfile`
+- `docker-compose.example.yml`
+- `.env.example`
+- `docker-entrypoint.sh`
 
-## Características del Sistema
-
-### Frontend (Formulario Público)
-- ✅ Formulario responsive y accesible
-- ✅ Modo claro/oscuro (toggle)
-- ✅ Generación de PDFs
-- ✅ Guardado en base de datos con numeración automática
-- ✅ Validación en tiempo real
-- ✅ Enlace al panel administrativo
-
-### Panel Administrativo
-- ✅ Dashboard con estadísticas
-- ✅ Autenticación segura con hash de contraseñas
-- ✅ Protección contra fuerza bruta (bloqueo temporal)
-- ✅ Gestión de usuarios (CRUD)
-- ✅ Configuración de empresa (logos, colores)
-- ✅ Listado de servicios con filtros
-- ✅ Auditoría completa de acciones
-- ✅ Modo claro/oscuro
-
-### Seguridad Implementada
-- ✅ Hash de contraseñas con bcrypt
-- ✅ Protección CSRF (sesiones PHP)
-- ✅ Prepared statements (previene SQL Injection)
-- ✅ Rate limiting para login
-- ✅ Bloqueo temporal de cuentas
-- ✅ Sanitización de entradas
-- ✅ Escape de salidas (XSS prevention)
-- ✅ Cookies seguras (HttpOnly)
-
-## Personalización
-
-### Cambiar Logos
-
-1. Reemplazar `logo.png` para el encabezado
-2. Reemplazar `logo2.png` para el footer
-3. O usar el panel administrativo → Configuración
-
-### Cambiar Colores
-
-Desde el panel administrativo:
-1. Iniciar sesión como admin
-2. Ir a Configuración
-3. Modificar colores primario/secundario
-4. Guardar cambios
-
-O editar directamente en `styles.css`:
-
-```css
-:root {
-    --color-primary: #001F3F;
-    --color-secondary: #4CAF50;
-}
-```
-
-### Agregar Más Usuarios
-
-Desde phpMyAdmin o MySQL:
-
-```sql
-INSERT INTO usuarios (username, password_hash, email, nombre_completo, rol, activo)
-VALUES (
-    'nuevo_usuario',
-    '$2y$10$' || password_hash('contraseña_segura', PASSWORD_DEFAULT),
-    'email@empresa.com',
-    'Nombre Completo',
-    'tecnico',
-    TRUE
-);
-```
-
-O desde PHP:
-
-```php
-<?php
-require_once 'config/database.php';
-$db = getDB();
-
-$passwordHash = password_hash('contraseña_segura', PASSWORD_DEFAULT);
-
-$sql = "INSERT INTO usuarios (username, password_hash, email, nombre_completo, rol) 
-        VALUES (:user, :pass, :email, :nombre, :rol)";
-$stmt = $db->prepare($sql);
-$stmt->execute([
-    ':user' => 'nuevo_usuario',
-    ':pass' => $passwordHash,
-    ':email' => 'email@empresa.com',
-    ':nombre' => 'Nombre Completo',
-    ':rol' => 'tecnico'
-]);
-?>
-```
-
-## Solución de Problemas
-
-### Error de Conexión a la BD
-
-1. Verificar que MySQL/MariaDB esté corriendo
-2. Confirmar credenciales en `config/database.php`
-3. Asegurar que la base de datos fue creada
-4. Verificar permisos del usuario de BD
-
-### Los PDFs no se generan
-
-1. Verificar que JavaScript esté habilitado
-2. Revisar consola del navegador para errores
-3. Confirmar que los archivos en `dist/` existen
-
-### Login no funciona
-
-1. Verificar que las tablas fueron creadas
-2. Confirmar que hay usuarios en la BD
-3. Revisar logs de error de PHP
-4. Verificar permisos de escritura para `.login_attempts`
-
-### Modo Oscuro no persiste
-
-1. Verificar que localStorage esté habilitado
-2. Limpiar caché del navegador
-3. Verificar que JavaScript esté habilitado
-
-## Mantenimiento
-
-### Limpieza de Sesiones Expiradas
-
-Ejecutar periódicamente:
-
-```sql
-CALL sp_limpiar_sesiones_expiradas();
-```
-
-O configurar un cron job:
+### Pasos
 
 ```bash
-# Ejecutar diariamente a las 2 AM
-0 2 * * * mysql -u root -p itspanama_db -e "CALL sp_limpiar_sesiones_expiradas();"
+cd IT-form
+cp docker/.env.example .env
+# Editar DB_PASS y MYSQL_ROOT_PASSWORD
+
+docker compose -f docker/docker-compose.example.yml --env-file .env up -d --build
 ```
 
-### Backup de la Base de Datos
+- App: `http://localhost:8088/` (o `APP_PORT`)
+- DB: servicio `db`, database **`itformdb`**, user **`itform_usr`**
+- Init SQL se carga en el primer arranque del volumen
+
+Volúmenes de datos:
+
+- `itform_db_data` (MySQL)
+- código montado en `/var/www/html` (uploads/storage persisten en el host)
+
+Detener:
 
 ```bash
-mysqldump -u root -p itspanama_db > backup_$(date +%Y%m%d).sql
+docker compose -f docker/docker-compose.example.yml --env-file .env down
 ```
 
-### Restaurar Backup
+---
+
+## Flujo de uso
+
+1. Admin configura empresa/logo: `admin/configuracion.php`
+2. Técnico inicia sesión
+3. Completa formulario → **Guardar**
+4. Tras guardar se habilitan **Imprimir** y **Compartir** (en móvil usa Web Share API si está disponible; si no, **Descargar**)
+
+---
+
+## Lab SQLite (solo desarrollo)
 
 ```bash
-mysql -u root -p itspanama_db < backup_20250430.sql
+# .env
+DB_DRIVER=sqlite
+DB_PATH=/ruta/absoluta/storage/db/itform.sqlite
+
+php database/init_sqlite.php
+php -S 127.0.0.1:8080 router.php
 ```
 
-## Soporte
+---
 
-Para soporte técnico o reportar errores:
-- Email: soporte@itspanama.net
-- Web: www.itspanama.net
+## Soporte de rutas sensibles
 
-## Licencia
-
-Ver archivo LICENSE para más detalles.
+El router/`\.htaccess` bloquea: `.env`, `config/`, `database/`, `storage/`, `docker/`, `*.sql`.  
+Los logos públicos viven en `uploads/`.

@@ -1,82 +1,54 @@
 <?php
 /**
- * API para guardar servicios en la base de datos
- * Maneja la creación y actualización de informes de servicio técnico
+ * API: guardar servicio técnico.
+ * Requiere sesión autenticada (salvo ALLOW_PUBLIC_SAVE=1) + CSRF + rate limit.
  */
-
-session_start();
+require_once __DIR__ . '/../config/security.php';
 require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../admin/auth.php';
 
-// Configurar respuesta JSON
-header('Content-Type: application/json; charset=utf-8');
+itform_send_security_headers();
 
-/**
- * Verificar si el usuario está autenticado
- */
-function isAuthenticated() {
-    return isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true;
+if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+    itform_json_response(['success' => false, 'error' => 'Método no permitido'], 405);
 }
 
-/**
- * Registrar acción en auditoría
- */
-function logAudit($db, $userId, $action, $table, $recordId, $description) {
-    try {
-        $sql = "INSERT INTO auditoria (usuario_id, accion, tabla_afectada, registro_id, descripcion, ip_origen, user_agent) 
-                VALUES (:user_id, :accion, :tabla, :registro_id, :descripcion, :ip, :agent)";
-        $stmt = $db->prepare($sql);
-        $stmt->execute([
-            ':user_id' => $userId,
-            ':accion' => $action,
-            ':tabla' => $table,
-            ':registro_id' => $recordId,
-            ':descripcion' => $description,
-            ':ip' => $_SERVER['REMOTE_ADDR'] ?? null,
-            ':agent' => $_SERVER['HTTP_USER_AGENT'] ?? null
-        ]);
-    } catch (Exception $e) {
-        error_log("Error en auditoría: " . $e->getMessage());
-    }
+$max = (int) itform_env('API_RATE_MAX', '30');
+$win = (int) itform_env('API_RATE_WINDOW', '60');
+if (!itform_rate_limit('api_save', $max, $win)) {
+    itform_json_response(['success' => false, 'error' => 'Rate limit excedido'], 429);
 }
 
-/**
- * Sanitizar entrada de texto
- */
-function sanitizeInput($data) {
-    return htmlspecialchars(strip_tags(trim($data)), ENT_QUOTES, 'UTF-8');
+$csrf = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? null;
+if (!itform_csrf_validate(is_string($csrf) ? $csrf : null)) {
+    itform_json_response(['success' => false, 'error' => 'Token CSRF inválido'], 403);
 }
 
-// Verificar método HTTP
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(405);
-    echo json_encode(['success' => false, 'error' => 'Método no permitido']);
-    exit;
+$allowPublic = itform_env('ALLOW_PUBLIC_SAVE', '0') === '1';
+if (!$allowPublic && !isAuthenticated()) {
+    itform_json_response(['success' => false, 'error' => 'No autorizado. Inicie sesión para guardar.'], 401);
 }
-
-// Verificar autenticación (opcional - puede comentarse para permitir sin login)
-// if (!isAuthenticated()) {
-//     http_response_code(401);
-//     echo json_encode(['success' => false, 'error' => 'No autorizado']);
-//     exit;
-// }
 
 try {
     $db = getDB();
-    
-    // Obtener datos del formulario
-    $cliente = sanitizeInput($_POST['cliente'] ?? '');
-    $fechaServicio = $_POST['fecha'] ?? date('Y-m-d H:i:s');
-    $direccion = sanitizeInput($_POST['direccion'] ?? '');
-    $ticket = sanitizeInput($_POST['ticket'] ?? '');
-    $reporteCliente = sanitizeInput($_POST['reporte'] ?? '');
-    $diagnostico = sanitizeInput($_POST['diagnostico'] ?? '');
-    $trabajoRealizado = sanitizeInput($_POST['trabajoRealizado'] ?? '');
-    $observaciones = sanitizeInput($_POST['observaciones'] ?? '');
-    $recibidoConforme = sanitizeInput($_POST['recibidoConforme'] ?? '');
-    $firmaTecnico = sanitizeInput($_POST['firmaTecnico'] ?? '');
-    
-    // Validar campos requeridos
-    $requiredFields = [
+
+    $cliente = itform_sanitize_text($_POST['cliente'] ?? '');
+    $fechaServicio = itform_sanitize_text($_POST['fecha'] ?? date('Y-m-d H:i:s'));
+    // datetime-local → SQL
+    $fechaServicio = str_replace('T', ' ', $fechaServicio);
+    if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', $fechaServicio)) {
+        $fechaServicio .= ':00';
+    }
+    $direccion = itform_sanitize_text($_POST['direccion'] ?? '');
+    $ticket = itform_sanitize_text($_POST['ticket'] ?? '');
+    $reporteCliente = itform_sanitize_text($_POST['reporte'] ?? '');
+    $diagnostico = itform_sanitize_text($_POST['diagnostico'] ?? '');
+    $trabajoRealizado = itform_sanitize_text($_POST['trabajoRealizado'] ?? '');
+    $observaciones = itform_sanitize_text($_POST['observaciones'] ?? '');
+    $recibidoConforme = itform_sanitize_text($_POST['recibidoConforme'] ?? '');
+    $firmaTecnico = itform_sanitize_text($_POST['firmaTecnico'] ?? '');
+
+    $required = [
         'cliente' => $cliente,
         'fecha' => $fechaServicio,
         'direccion' => $direccion,
@@ -85,33 +57,45 @@ try {
         'diagnostico' => $diagnostico,
         'trabajoRealizado' => $trabajoRealizado,
         'recibidoConforme' => $recibidoConforme,
-        'firmaTecnico' => $firmaTecnico
+        'firmaTecnico' => $firmaTecnico,
     ];
-    
-    foreach ($requiredFields as $field => $value) {
-        if (empty($value)) {
-            throw new Exception("El campo '{$field}' es requerido");
+    foreach ($required as $field => $value) {
+        if ($value === '') {
+            throw new InvalidArgumentException("El campo '{$field}' es requerido");
         }
     }
-    
-    // Obtener ID del usuario si está autenticado
-    $usuarioId = $_SESSION['user_id'] ?? null;
-    
-    // Insertar servicio en la base de datos
-    $sql = "INSERT INTO servicios (
-                cliente, fecha_servicio, direccion, ticket,
+
+    $usuarioId = currentUserId();
+    $numero = itform_next_sequence($db);
+    if ($numero === '') {
+        // MySQL trigger generará el número; placeholder temporal único
+        $numero = 'TMP-' . bin2hex(random_bytes(4));
+    }
+
+    $now = date('Y-m-d H:i:s');
+    $sql = 'INSERT INTO servicios (
+                numero_secuencia, cliente, fecha_servicio, direccion, ticket,
                 reporte_cliente, diagnostico_tecnico, trabajo_realizado,
                 observaciones, recibido_conforme, firma_tecnico,
                 usuario_id, estado, pdf_generado, fecha_guardado
             ) VALUES (
-                :cliente, :fecha, :direccion, :ticket,
+                :num, :cliente, :fecha, :direccion, :ticket,
                 :reporte, :diagnostico, :trabajo,
                 :observaciones, :recibido, :firma,
-                :usuario_id, 'completado', FALSE, NOW()
-            )";
-    
+                :usuario_id, :estado, 0, :guardado
+            )';
+
+    // MySQL trigger: si usamos TMP, mejor enviar vacío y dejar trigger — pero NOT NULL UNIQUE
+    // En init MySQL el trigger solo actúa si vacío. Usamos '' para mysql.
+    if (itform_db_driver() === 'mysql') {
+        $numeroInsert = '';
+    } else {
+        $numeroInsert = $numero;
+    }
+
     $stmt = $db->prepare($sql);
     $stmt->execute([
+        ':num' => $numeroInsert,
         ':cliente' => $cliente,
         ':fecha' => $fechaServicio,
         ':direccion' => $direccion,
@@ -122,56 +106,41 @@ try {
         ':observaciones' => $observaciones,
         ':recibido' => $recibidoConforme,
         ':firma' => $firmaTecnico,
-        ':usuario_id' => $usuarioId
+        ':usuario_id' => $usuarioId,
+        ':estado' => 'completado',
+        ':guardado' => $now,
     ]);
-    
-    $servicioId = $db->lastInsertId();
-    
-    // Obtener el número de secuencia generado
-    $sqlSelect = "SELECT numero_secuencia, fecha_guardado FROM servicios WHERE id = :id";
-    $stmtSelect = $db->prepare($sqlSelect);
+
+    $servicioId = (int) $db->lastInsertId();
+    $stmtSelect = $db->prepare('SELECT numero_secuencia, fecha_guardado FROM servicios WHERE id = :id');
     $stmtSelect->execute([':id' => $servicioId]);
     $servicio = $stmtSelect->fetch();
-    
-    // Registrar en auditoría
+
     if ($usuarioId) {
         logAudit(
-            $db, 
-            $usuarioId, 
-            'CREATE', 
-            'servicios', 
-            $servicioId, 
-            "Se creó el servicio {$servicio['numero_secuencia']} para el cliente {$cliente}"
+            $db,
+            $usuarioId,
+            'CREATE',
+            'servicios',
+            $servicioId,
+            'Servicio ' . ($servicio['numero_secuencia'] ?? '') . " cliente {$cliente}"
         );
     }
-    
-    // Respuesta exitosa
-    echo json_encode([
+
+    itform_json_response([
         'success' => true,
         'message' => 'Servicio guardado exitosamente',
         'data' => [
             'id' => $servicioId,
-            'numero_secuencia' => $servicio['numero_secuencia'],
-            'fecha_guardado' => $servicio['fecha_guardado'],
+            'numero_secuencia' => $servicio['numero_secuencia'] ?? $numero,
+            'fecha_guardado' => $servicio['fecha_guardado'] ?? $now,
             'cliente' => $cliente,
-            'ticket' => $ticket
-        ]
+            'ticket' => $ticket,
+        ],
     ]);
-    
-} catch (PDOException $e) {
-    error_log("Error PDO: " . $e->getMessage());
-    http_response_code(500);
-    echo json_encode([
-        'success' => false, 
-        'error' => 'Error al guardar en la base de datos',
-        'details' => $e->getMessage()
-    ]);
-} catch (Exception $e) {
-    error_log("Error: " . $e->getMessage());
-    http_response_code(400);
-    echo json_encode([
-        'success' => false, 
-        'error' => $e->getMessage()
-    ]);
+} catch (InvalidArgumentException $e) {
+    itform_json_response(['success' => false, 'error' => $e->getMessage()], 400);
+} catch (Throwable $e) {
+    error_log('guardar_servicio: ' . $e->getMessage());
+    itform_json_response(['success' => false, 'error' => 'Error al guardar en la base de datos'], 500);
 }
-?>
