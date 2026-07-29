@@ -2,6 +2,14 @@
 
 Aplicación web PHP para registrar servicios técnicos, branding de empresa, panel admin y PDF (cliente/servidor).
 
+## Documentación
+
+| Doc | Contenido |
+|-----|-----------|
+| [README.md](./README.md) | Overview, quickstart, bitácora de cambios |
+| [INSTALACION.md](./INSTALACION.md) | On-premise y Docker paso a paso |
+| [MAINTENANCE.md](./MAINTENANCE.md) | **Mantenimiento y soporte técnico (desarrolladores)** |
+
 ## Características
 
 - Formulario responsive (móvil/desktop)
