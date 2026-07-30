@@ -91,27 +91,21 @@ function itform_db_driver(): string
 }
 
 /**
- * Genera número AAAA-MM-NNNN (compatible MySQL trigger y SQLite app-side).
+ * Genera número AAAA-MM-NNNN (app-side MySQL y SQLite; no depende de triggers).
  */
 function itform_next_sequence(PDO $db): string
 {
     $year = date('Y');
     $month = date('m');
     $prefix = $year . '-' . $month . '-';
-    $driver = itform_db_driver();
 
-    if ($driver === 'sqlite') {
-        $stmt = $db->prepare("SELECT numero_secuencia FROM servicios WHERE numero_secuencia LIKE :p ORDER BY id DESC LIMIT 1");
-        $stmt->execute([':p' => $prefix . '%']);
-        $last = $stmt->fetchColumn();
-        $n = 1;
-        if ($last) {
-            $parts = explode('-', $last);
-            $n = ((int) end($parts)) + 1;
-        }
-        return $prefix . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+    $stmt = $db->prepare('SELECT numero_secuencia FROM servicios WHERE numero_secuencia LIKE :p ORDER BY id DESC LIMIT 1');
+    $stmt->execute([':p' => $prefix . '%']);
+    $last = $stmt->fetchColumn();
+    $n = 1;
+    if ($last) {
+        $parts = explode('-', (string) $last);
+        $n = ((int) end($parts)) + 1;
     }
-
-    // MySQL: el trigger asigna; devolver placeholder vacío y leer tras insert
-    return '';
+    return $prefix . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
 }

@@ -4,14 +4,63 @@
  */
 require_once __DIR__ . '/env.php';
 
+function itform_is_https(): bool
+{
+    if (itform_env('FORCE_SECURE_COOKIE', '0') === '1') {
+        return true;
+    }
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+    if ((int) ($_SERVER['SERVER_PORT'] ?? 0) === 443) {
+        return true;
+    }
+    // Proxies de confianza (nginx-proxy, Traefik, Cloudflare Tunnel, etc.)
+    if (itform_trust_proxy()) {
+        $proto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+        if ($proto !== '') {
+            // puede ser "https,http"
+            $first = trim(explode(',', $proto)[0]);
+            if ($first === 'https') {
+                return true;
+            }
+        }
+        $ssl = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? ''));
+        if ($ssl === 'on' || $ssl === '1') {
+            return true;
+        }
+        $front = strtolower((string) ($_SERVER['HTTP_FRONT_END_HTTPS'] ?? ''));
+        if ($front === 'on') {
+            return true;
+        }
+        $cf = (string) ($_SERVER['HTTP_CF_VISITOR'] ?? '');
+        if ($cf !== '' && stripos($cf, 'https') !== false) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * TRUST_PROXIES=1|*|csv de CIDR/IPs. Por defecto 0 (no confiar).
+ * En Docker detrás de nginx-proxy/Traefik suele usarse TRUST_PROXIES=1
+ */
+function itform_trust_proxy(): bool
+{
+    $v = strtolower(trim((string) itform_env('TRUST_PROXIES', '0')));
+    if ($v === '' || $v === '0' || $v === 'false' || $v === 'no') {
+        return false;
+    }
+    return true;
+}
+
 function itform_bootstrap_session(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
     }
 
-    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (itform_env('FORCE_SECURE_COOKIE', '0') === '1');
+    $secure = itform_is_https();
 
     ini_set('session.use_only_cookies', '1');
     ini_set('session.use_strict_mode', '1');
@@ -69,6 +118,24 @@ function itform_csrf_validate(?string $token): bool
 
 function itform_client_ip(): string
 {
+    if (itform_trust_proxy()) {
+        $xff = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+        if ($xff !== '') {
+            $parts = array_map('trim', explode(',', $xff));
+            $candidate = $parts[0] ?? '';
+            if ($candidate !== '' && filter_var($candidate, FILTER_VALIDATE_IP)) {
+                return $candidate;
+            }
+        }
+        $real = (string) ($_SERVER['HTTP_X_REAL_IP'] ?? '');
+        if ($real !== '' && filter_var($real, FILTER_VALIDATE_IP)) {
+            return $real;
+        }
+        $cf = (string) ($_SERVER['HTTP_CF_CONNECTING_IP'] ?? '');
+        if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP)) {
+            return $cf;
+        }
+    }
     return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 }
 
@@ -139,10 +206,8 @@ function itform_send_security_headers(): void
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: geolocation=(), microphone=(), camera=()');
     header("Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'");
-    // HSTS solo si HTTPS
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (itform_env('FORCE_SECURE_COOKIE', '0') === '1');
-    if ($https) {
+    // HSTS solo si HTTPS (directo o vía proxy de confianza)
+    if (itform_is_https()) {
         header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
     }
 }

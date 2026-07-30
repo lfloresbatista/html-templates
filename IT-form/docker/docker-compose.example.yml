@@ -1,67 +1,87 @@
-# IT-form stack de ejemplo (MySQL + PHP Apache)
-# Uso:
-#   cd IT-form
-#   cp docker/.env.example .env
-#   # editar secretos en .env
-#   docker compose -f docker/docker-compose.example.yml --env-file .env up -d --build
+# IT-form — modo principal BYOD (Bring Your Own Database)
 #
-# App: http://localhost:8088/
+# El sysadmin crea DB/user en MySQL compartido (o usa SQLite).
+# Este compose solo levanta la APP.
+#
+# Uso básico (SQLite, sin MySQL):
+#   DB_DRIVER=sqlite docker compose -f docker/docker-compose.example.yml up -d --build
+#
+# Uso con MySQL del homelab (misma red):
+#   1) CREATE DATABASE itformdb; CREATE USER ... GRANT ...
+#   2) Unir este servicio a la red del MySQL (ver redes abajo)
+#   3) DB_HOST=<servicio-mysql> DB_USER=... DB_PASS=...
+#
+# Proxy (nginx-proxy / Traefik / Cloudflare):
+#   TRUST_PROXIES=1  VIRTUAL_HOST=itform.example.com  VIRTUAL_PORT=8080
+#   Quitar "ports:" si solo entra por el proxy en la red compartida.
 
 services:
-  db:
-    image: mariadb:11.4
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${DB_NAME:-itformdb}
-      MYSQL_USER: ${DB_USER:-itform_usr}
-      MYSQL_PASSWORD: ${DB_PASS:?set DB_PASS in .env}
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
-    volumes:
-      - itform_db_data:/var/lib/mysql
-      - ../database/init_database.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-    healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
   web:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+    image: ${ITFORM_WEB_IMAGE:-it-form:local}
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
+    # Non-root: Apache escucha 8080
+    expose:
+      - "8080"
     ports:
-      - "${APP_PORT:-8088}:80"
+      - "${APP_PORT:-8088}:8080"
     environment:
-      DB_DRIVER: mysql
-      DB_HOST: db
-      DB_PORT: "3306"
+      DB_DRIVER: ${DB_DRIVER:-sqlite}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
       DB_NAME: ${DB_NAME:-itformdb}
       DB_USER: ${DB_USER:-itform_usr}
-      DB_PASS: ${DB_PASS}
+      DB_PASS: ${DB_PASS:-}
+      DB_PATH: ${DB_PATH:-/var/www/html/storage/db/itform.sqlite}
+      ITFORM_AUTO_MIGRATE: ${ITFORM_AUTO_MIGRATE:-1}
+      ITFORM_MIGRATE_RETRIES: ${ITFORM_MIGRATE_RETRIES:-30}
       ALLOW_PUBLIC_SAVE: ${ALLOW_PUBLIC_SAVE:-0}
       SESSION_NAME: ${SESSION_NAME:-ITFORMSESSID}
       SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
       FORCE_SECURE_COOKIE: ${FORCE_SECURE_COOKIE:-0}
+      TRUST_PROXIES: ${TRUST_PROXIES:-1}
       LOGIN_MAX_ATTEMPTS: ${LOGIN_MAX_ATTEMPTS:-5}
       LOGIN_LOCK_MINUTES: ${LOGIN_LOCK_MINUTES:-15}
       API_RATE_MAX: ${API_RATE_MAX:-30}
       API_RATE_WINDOW: ${API_RATE_WINDOW:-60}
+      # nginx-proxy
+      VIRTUAL_HOST: ${VIRTUAL_HOST:-}
+      VIRTUAL_PORT: ${VIRTUAL_PORT:-8080}
+      LETSENCRYPT_HOST: ${LETSENCRYPT_HOST:-}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL:-}
+      HTTPS_METHOD: ${HTTPS_METHOD:-noredirect}
     volumes:
-      - ../:/var/www/html
+      - itform_uploads:/var/www/html/uploads
+      - itform_storage:/var/www/html/storage
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "php",
+          "-r",
+          "$$u=@file_get_contents('http://127.0.0.1:8080/api/health.php'); exit(($$u && strpos($$u,'ok')!==false)?0:1);",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.services.itform.loadbalancer.server.port=8080"
+
+# Para unir a red del homelab (MySQL + nginx-proxy), descomenta y ajusta:
+# networks:
+#   default:
+#     name: ${PROXY_NETWORK:-kd-prod_net}
+#     external: true
 
 volumes:
-  itform_db_data:
+  itform_uploads:
+  itform_storage:

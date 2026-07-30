@@ -1,14 +1,15 @@
 # Instalación IT-form
 
-Dos modos soportados: **on-premise** (LAMP/LEMP) y **Docker**.
+Modos: **on-premise**, **Docker BYOD** (MySQL compartido o SQLite), **Docker lab con MariaDB oficial**.
 
 ## Requisitos
 
 | Componente | Versión |
 |------------|---------|
 | PHP | 8.1+ (`pdo`, `pdo_mysql` o `pdo_sqlite`, `session`, `json`, `mbstring`, `fileinfo`; `gd` recomendado) |
-| Base de datos | MySQL 8 / MariaDB 10.4+ (**nombre:** `itformdb`, **usuario:** `itform_usr`) |
-| Servidor web | Apache 2.4+ (mod_rewrite) o Nginx + PHP-FPM |
+| Base de datos | MySQL/MariaDB compartido (**itformdb** / **itform_usr**) **o** SQLite |
+| Servidor web | Apache 2.4+ o contenedor app (non-root :8080) |
+| Proxy opcional | nginx-proxy, Traefik, Cloudflare Tunnel |
 
 ---
 
@@ -21,142 +22,155 @@ cp -r IT-form /var/www/html/itform
 cd /var/www/html/itform
 ```
 
-### 2. Base de datos MySQL/MariaDB
+### 2. Base de datos (sysadmin)
 
 ```bash
-sudo mysql -u root -p <<'SQL'
-CREATE DATABASE IF NOT EXISTS itformdb
-  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'itform_usr'@'localhost' IDENTIFIED BY 'CLAVE_SEGURA';
-GRANT SELECT, INSERT, UPDATE, DELETE ON itformdb.* TO 'itform_usr'@'localhost';
+# En el MySQL existente:
+CREATE DATABASE itformdb CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'itform_usr'@'%' IDENTIFIED BY 'CLAVE_SEGURA';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX ON itformdb.* TO 'itform_usr'@'%';
 FLUSH PRIVILEGES;
-SQL
-
-mysql -u root -p itformdb < database/init_database.sql
 ```
 
-> El script `database/init_database.sql` crea tablas en `itformdb`.  
-> Si el usuario `itform_usr` no puede crear DB, ejecute el SQL como root y otorgue permisos DML.
-
-### 3. Entorno
+Tablas:
 
 ```bash
 cp .env.example .env
-# Editar:
-# DB_DRIVER=mysql
-# DB_HOST=127.0.0.1
-# DB_NAME=itformdb
-# DB_USER=itform_usr
-# DB_PASS=CLAVE_SEGURA
-# ALLOW_PUBLIC_SAVE=0
+# DB_DRIVER=mysql DB_HOST=... DB_NAME=itformdb DB_USER=itform_usr DB_PASS=...
+php database/migrate.php
 ```
 
-### 4. Permisos
+(Alternativa: importar `database/init_database.sql` como root y luego solo DML al user de la app.)
 
-```bash
-sudo chown -R www-data:www-data /var/www/html/itform
-sudo find /var/www/html/itform -type d -exec chmod 755 {} \;
-sudo find /var/www/html/itform -type f -exec chmod 644 {} \;
-sudo chmod 640 /var/www/html/itform/.env
-sudo mkdir -p storage/db storage/logs uploads
-sudo chown -R www-data:www-data storage uploads
-sudo chmod 750 storage storage/db storage/logs uploads
-```
+### 3. Permisos y Apache
 
-### 5. Apache (ejemplo)
+Ver checklist de seguridad más abajo. DocumentRoot = carpeta IT-form, `AllowOverride All`.
 
-```apache
-<VirtualHost *:80>
-    ServerName itform.local
-    DocumentRoot /var/www/html/itform
-    <Directory /var/www/html/itform>
-        AllowOverride All
-        Require all granted
-    </Directory>
-</VirtualHost>
-```
-
-Habilite HTTPS (Let’s Encrypt) y `FORCE_SECURE_COOKIE=1` en producción.
-
-### 6. Usuarios iniciales
+### 4. Usuarios seed
 
 | Usuario | Password | Rol |
 |---------|----------|-----|
 | admin | admin123 | admin |
 | itspanama | tecnico123 | tecnico |
 
-**Cambiar contraseñas de inmediato** (Admin → Usuarios).
-
-### 7. Checklist seguridad producción
-
-- [ ] HTTPS + cookies seguras
-- [ ] `.env` no legible vía web
-- [ ] `ALLOW_PUBLIC_SAVE=0`
-- [ ] Usuario BD least-privilege (`itform_usr`)
-- [ ] Backups de `itformdb` y `uploads/`
-- [ ] Rotar passwords seed
+**Cambiar en producción.**
 
 ---
 
-## Opción B — Docker
+## Opción B — Docker BYOD (recomendado en homelab)
 
-Archivos en `docker/`:
+**Principio:** no se construye ni se levanta MySQL por app. Se usa el motor compartido o SQLite.
 
-- `Dockerfile`
-- `docker-compose.example.yml`
-- `.env.example`
-- `docker-entrypoint.sh`
-
-### Pasos
+### B1. SQLite (máxima simplicidad)
 
 ```bash
 cd IT-form
 cp docker/.env.example .env
-# Editar DB_PASS y MYSQL_ROOT_PASSWORD
-
+# DB_DRIVER=sqlite  (default en example)
 docker compose -f docker/docker-compose.example.yml --env-file .env up -d --build
+# http://localhost:8088/
 ```
 
-- App: `http://localhost:8088/` (o `APP_PORT`)
-- DB: servicio `db`, database **`itformdb`**, user **`itform_usr`**
-- Init SQL se carga en el primer arranque del volumen
+La app (non-root, puerto **8080** interno) crea tablas al arrancar (`ITFORM_AUTO_MIGRATE=1`).
 
-Volúmenes de datos:
+### B2. MySQL/MariaDB ya corriendo en otra stack
 
-- `itform_db_data` (MySQL)
-- código montado en `/var/www/html` (uploads/storage persisten en el host)
+1. En MySQL: crear `itformdb` + `itform_usr` + password (como en Opción A §2).  
+2. Poner el contenedor **web** en la **misma red Docker** que MySQL:
 
-Detener:
+```yaml
+# al final de un override o descomentar en compose
+networks:
+  default:
+    name: kd-prod_net   # red de tu stack
+    external: true
+```
+
+3. `.env`:
+
+```env
+DB_DRIVER=mysql
+DB_HOST=mysql          # nombre DNS del servicio MySQL en esa red
+DB_NAME=itformdb
+DB_USER=itform_usr
+DB_PASS=...
+TRUST_PROXIES=1
+```
+
+4. `docker compose ... up -d --build`
+
+Volúmenes **nombrados** (no binds de código): `itform_uploads`, `itform_storage`.  
+Código = **dentro de la imagen**.
+
+### Proxy (nginx-proxy / Traefik / Cloudflare)
+
+```env
+TRUST_PROXIES=1
+VIRTUAL_HOST=itform.example.com
+VIRTUAL_PORT=8080
+HTTPS_METHOD=noredirect
+# LETSENCRYPT_HOST=itform.example.com
+```
+
+- Contenedor escucha **8080** como non-root (compatible con `VIRTUAL_PORT`).
+- Cookies Secure / HSTS respetan `X-Forwarded-Proto` si `TRUST_PROXIES=1`.
+- Traefik: label `traefik.http.services.itform.loadbalancer.server.port=8080`.
+
+### Imagen preconstruida (GHCR)
 
 ```bash
-docker compose -f docker/docker-compose.example.yml --env-file .env down
+docker build -f docker/Dockerfile -t ghcr.io/USER/it-form:v1.0.1 .
+docker push ghcr.io/USER/it-form:v1.0.1
+# compose: image: ghcr.io/USER/it-form:v1.0.1  (sin build)
 ```
+
+---
+
+## Opción C — Docker lab con MariaDB oficial (opcional)
+
+Solo si **no** tienes MySQL compartido. **No** se buildea MariaDB: imagen oficial + env.
+
+```bash
+docker compose -f docker/docker-compose.with-db.example.yml --env-file .env up -d --build
+```
+
+- `db`: `mariadb:11.4` + healthcheck + `MYSQL_DATABASE/USER/PASSWORD`
+- `web`: build app, `depends_on: service_healthy`, migrate al arrancar
+
+---
+
+## Migraciones
+
+```bash
+php database/migrate.php
+# o en contenedor:
+docker exec <web> php database/migrate.php
+```
+
+Idempotente. Crea tablas/seeds; **no** crea el DATABASE/USER de MySQL.
+
+---
+
+## Health
+
+- `GET /api/health.php` — liveness  
+- `GET /api/health.php?ready=1` — exige BD OK (503 si no)
+
+---
+
+## Checklist seguridad producción
+
+- [ ] HTTPS (proxy) + `TRUST_PROXIES=1` solo detrás de proxy confiable  
+- [ ] Passwords seed rotadas  
+- [ ] `ALLOW_PUBLIC_SAVE=0`  
+- [ ] User BD least-privilege (si migrate auto: necesita CREATE/ALTER iniciales)  
+- [ ] Backups `itformdb` + volumen `uploads`  
+- [ ] Contenedor non-root (UID www-data, puerto 8080)
 
 ---
 
 ## Flujo de uso
 
-1. Admin configura empresa/logo: `admin/configuracion.php`
-2. Técnico inicia sesión
-3. Completa formulario → **Guardar**
-4. Tras guardar se habilitan **Imprimir** y **Compartir** (en móvil usa Web Share API si está disponible; si no, **Descargar**)
-
----
-
-## Lab SQLite (solo desarrollo)
-
-```bash
-# .env
-DB_DRIVER=sqlite
-DB_PATH=/ruta/absoluta/storage/db/itform.sqlite
-
-php database/init_sqlite.php
-php -S 127.0.0.1:8080 router.php
-```
-
----
-
-## Soporte de rutas sensibles
-
-El router/`\.htaccess` bloquea: `.env`, `config/`, `database/`, `storage/`, `docker/`, `*.sql`.  
-Los logos públicos viven en `uploads/`.
+1. Admin → configuración empresa/logo  
+2. Técnico login → formulario → **Guardar**  
+3. **Imprimir** / **Compartir|Descargar**

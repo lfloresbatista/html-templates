@@ -67,10 +67,6 @@ try {
 
     $usuarioId = currentUserId();
     $numero = itform_next_sequence($db);
-    if ($numero === '') {
-        // MySQL trigger generará el número; placeholder temporal único
-        $numero = 'TMP-' . bin2hex(random_bytes(4));
-    }
 
     $now = date('Y-m-d H:i:s');
     $sql = 'INSERT INTO servicios (
@@ -85,17 +81,9 @@ try {
                 :usuario_id, :estado, 0, :guardado
             )';
 
-    // MySQL trigger: si usamos TMP, mejor enviar vacío y dejar trigger — pero NOT NULL UNIQUE
-    // En init MySQL el trigger solo actúa si vacío. Usamos '' para mysql.
-    if (itform_db_driver() === 'mysql') {
-        $numeroInsert = '';
-    } else {
-        $numeroInsert = $numero;
-    }
-
     $stmt = $db->prepare($sql);
     $stmt->execute([
-        ':num' => $numeroInsert,
+        ':num' => $numero,
         ':cliente' => $cliente,
         ':fecha' => $fechaServicio,
         ':direccion' => $direccion,

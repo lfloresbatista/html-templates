@@ -405,21 +405,33 @@ Puntos de mantenimiento:
 
 ### 11.2 Docker
 
+**Principio BYOD:** no se buildea MySQL/MariaDB. Se usa motor compartido o SQLite.
+
 ```bash
 cd IT-form
 cp docker/.env.example .env
-# editar secretos
 docker compose -f docker/docker-compose.example.yml --env-file .env up -d --build
 ```
 
-Servicios:
+| Perfil | Compose | DB |
+|--------|---------|-----|
+| Principal | `docker-compose.example.yml` | Externa o SQLite |
+| Lab full | `docker-compose.with-db.example.yml` | `mariadb:11.4` oficial + healthcheck + `depends_on: healthy` |
 
-| Service | Imagen / build | Puerto |
-|---------|----------------|--------|
-| `web` | build `docker/Dockerfile` | `APP_PORT`→80 (default 8088) |
-| `db` | `mariadb:11.4` | interno; init via `init_database.sql` |
+| Pieza | Detalle |
+|-------|---------|
+| Imagen web | non-root `www-data`, listen **8080**, código en imagen |
+| Persistencia | `itform_uploads`, `itform_storage` (+ `itform_db_data` solo en perfil lab) |
+| Schema | `database/migrate.php` al arrancar si `ITFORM_AUTO_MIGRATE=1` |
+| Proxy | `TRUST_PROXIES=1`, RemoteIP, `VIRTUAL_PORT=8080` |
+| Health | `GET /api/health.php` |
 
-Volúmenes: datos MySQL nombrados; código montado en `/var/www/html` (uploads/storage persisten en host).
+### 11.2.1 MySQL compartido (sysadmin)
+
+1. Crear DB/user/pass en el MySQL existente.  
+2. Poner contenedor web en la misma red Docker.  
+3. `DB_HOST=<servicio>` + credenciales.  
+4. Arrancar solo la app; migrate crea tablas.
 
 ### 11.3 Lab `php -S`
 

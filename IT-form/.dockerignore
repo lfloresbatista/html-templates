@@ -1,0 +1,33 @@
+# Context de build = raíz IT-form/
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+
+# No meter tooling Docker dentro de la imagen de app
+docker/
+
+# Runtime
+storage/db/*
+!storage/db/.gitkeep
+storage/logs/*
+!storage/logs/.gitkeep
+uploads/*
+!uploads/.gitkeep
+!uploads/.htaccess
+
+pdfs-test/
+**/*.sqlite
+**/*.log
+.vscode/
+.idea/
+*.swp
+.DS_Store
+*.zip
+
+# Vendor pesado opcional de ejemplos TCPDF (se niega en web de todos modos)
+tcpdf/examples/
+tcpdf/tools/
+tcpdf/fonts/dejavu-fonts-ttf-*
+tcpdf/fonts/freefont-*

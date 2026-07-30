@@ -1,0 +1,76 @@
+# Perfil opcional: app + MariaDB OFICIAL (sin build de DB)
+# Para lab cuando NO hay MySQL compartido.
+#
+#   docker compose -f docker/docker-compose.with-db.example.yml --env-file .env up -d --build
+#
+# La app espera healthcheck de db y crea tablas (ITFORM_AUTO_MIGRATE=1).
+
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-itformdb}
+      MYSQL_USER: ${DB_USER:-itform_usr}
+      MYSQL_PASSWORD: ${DB_PASS:?set DB_PASS}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+    volumes:
+      - itform_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: ${ITFORM_WEB_IMAGE:-it-form:local}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8080"
+    ports:
+      - "${APP_PORT:-8088}:8080"
+    environment:
+      DB_DRIVER: mysql
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_NAME: ${DB_NAME:-itformdb}
+      DB_USER: ${DB_USER:-itform_usr}
+      DB_PASS: ${DB_PASS}
+      ITFORM_AUTO_MIGRATE: "1"
+      ITFORM_MIGRATE_RETRIES: "30"
+      ALLOW_PUBLIC_SAVE: ${ALLOW_PUBLIC_SAVE:-0}
+      TRUST_PROXIES: ${TRUST_PROXIES:-0}
+      SESSION_NAME: ${SESSION_NAME:-ITFORMSESSID}
+      SESSION_IDLE_MINUTES: ${SESSION_IDLE_MINUTES:-60}
+      FORCE_SECURE_COOKIE: ${FORCE_SECURE_COOKIE:-0}
+    volumes:
+      - itform_uploads:/var/www/html/uploads
+      - itform_storage:/var/www/html/storage
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$u=@file_get_contents('http://127.0.0.1:8080/api/health.php'); exit(($$u&&str_contains($$u,'ok'))?0:1);"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  itform_db_data:
+  itform_uploads:
+  itform_storage:

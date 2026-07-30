@@ -33,10 +33,16 @@ Aplicación web PHP para registrar servicios técnicos, branding de empresa, pan
 ```bash
 cd IT-form
 cp docker/.env.example .env
-# editar secretos
 docker compose -f docker/docker-compose.example.yml --env-file .env up -d --build
 # http://localhost:8088/
 ```
+
+- Imagen **web** non-root (puerto **8080**): código con `COPY` explícito (sin carpeta `docker/` en la imagen).
+- **BYOD:** MySQL del homelab o **SQLite** por defecto en el example.
+- Lab opcional con MariaDB **oficial** (sin build de DB): `docker-compose.with-db.example.yml`.
+- Volúmenes nombrados: `uploads`, `storage` (no bind de código).
+- Migraciones: `php database/migrate.php` / `ITFORM_AUTO_MIGRATE=1`.
+- Proxy: `TRUST_PROXIES=1`, `VIRTUAL_HOST`, puerto 8080.
 
 ### On-premise
 
