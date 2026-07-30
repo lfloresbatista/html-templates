@@ -56,28 +56,51 @@ $footerLine = implode(' | ', $footerBits);
     body.dark-mode .help-text { color: #888; }
     body.dark-mode #encabezado,
     body.dark-mode #footer { background-color: var(--color-background); }
-    .theme-toggle-container { position: fixed; top: 20px; right: 20px; z-index: 1000; }
+    .theme-toggle-container { position: fixed; top: 12px; right: 12px; z-index: 1001; }
     .theme-toggle-btn {
       background: var(--color-primary); color: white; border: none;
-      padding: 12px 18px; border-radius: 25px; cursor: pointer; font-size: 1.3rem;
+      padding: 10px 14px; border-radius: 25px; cursor: pointer; font-size: 1.1rem;
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); transition: all 0.3s ease;
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; gap: 6px;
     }
     .admin-link {
       position: fixed; bottom: 20px; right: 20px; background: var(--color-primary);
       color: white; padding: 12px 18px; border-radius: 25px; text-decoration: none;
-      font-weight: 600; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); z-index: 1000;
+      font-weight: 600; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); z-index: 1001;
     }
     .session-bar {
       max-width: 800px; margin: 10px auto 0; padding: 10px 16px;
       background: #e8f4ff; border-radius: 8px; font-size: .95rem;
     }
     body.dark-mode .session-bar { background: #2d2d44; color: #ddd; }
-    .btn-save { background-color: #007bff; color: white; }
-    .btn-save:hover:not(:disabled) { background-color: #0056b3; }
-    .btn-pdf-server { background-color: #6c5ce7; color: #fff; }
+    .btn-save { background-color: var(--color-primary, #001F3F); color: white; }
+    .btn-save:hover:not(:disabled) { filter: brightness(1.1); }
     .company-meta { color: #555; font-size: .95rem; margin: 6px 0 0; }
     body.dark-mode .company-meta { color: #bbb; }
+
+    /* Móvil: Panel arriba-izq; barra de acciones 2x2 abajo (no tapa el form) */
+    @media (max-width: 768px) {
+      .theme-toggle-container { top: 10px; right: 10px; }
+      .theme-toggle-btn {
+        padding: 8px 10px;
+        font-size: 1rem;
+        max-width: 46vw;
+      }
+      .theme-toggle-btn #themeText { display: none; } /* solo icono en móvil */
+      .admin-link {
+        bottom: auto;
+        top: 10px;
+        left: 10px;
+        right: auto;
+        padding: 8px 12px;
+        font-size: 0.85rem;
+        border-radius: 20px;
+      }
+    }
+    @media (max-width: 380px) {
+      .theme-toggle-btn { padding: 8px; }
+      .admin-link { padding: 8px 10px; font-size: 0.8rem; }
+    }
   </style>
 </head>
 <body>
