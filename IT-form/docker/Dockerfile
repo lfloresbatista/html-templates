@@ -53,7 +53,7 @@ COPY tcpdf/ ./tcpdf/
 COPY storage/ ./storage/
 COPY uploads/ ./uploads/
 COPY logo.png logo2.png logo_pdf.jpg logo2_pdf.jpg ./
-COPY docker/docker-entrypoint.sh /usr/local/bin/itform-entrypoint.sh
+COPY scripts/docker-entrypoint.sh /usr/local/bin/itform-entrypoint.sh
 
 RUN chmod +x /usr/local/bin/itform-entrypoint.sh \
     && mkdir -p storage/db storage/logs uploads \

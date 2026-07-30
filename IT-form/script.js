@@ -223,9 +223,10 @@
         mostrarMensaje(`✅ Guardado | N° ${seq}`, 'success');
         const ticket = document.getElementById('ticket');
         if (ticket && seq) ticket.value = seq;
+        // Prefer server PDF always after save (formato proyecto TCPDF). Client html2pdf solo fallback.
         setPostSaveEnabled(true);
-        // Pre-generar PDF en segundo plano (cliente) para share/download rápido
-        prebuildClientPdf().catch(() => {});
+        state.lastPdfBlob = null;
+        prebuildServerPdf().catch(() => {});
       } else if (res.status === 401) {
         mostrarMensaje('❌ No autorizado. Inicie sesión.', 'error');
         setPostSaveEnabled(false);
@@ -242,6 +243,29 @@
     }
   }
 
+  async function prebuildServerPdf() {
+    if (!state.authenticated) return;
+    try {
+      await refreshSession();
+      const res = await fetch('print_pdf.php', {
+        method: 'POST',
+        body: formPayload(),
+        credentials: 'same-origin',
+      });
+      if (!res.ok) throw new Error('pdf http ' + res.status);
+      const blob = await res.blob();
+      const ct = (res.headers.get('content-type') || blob.type || '').toLowerCase();
+      if (!ct.includes('pdf') && blob.size < 800) throw new Error('not pdf');
+      const nombre = (document.getElementById('cliente').value || 'cliente').trim().replace(/\s+/g, '_');
+      const seq = (state.lastSave && state.lastSave.numero_secuencia) || 'informe';
+      state.lastPdfName = `informe_${nombre}_${seq}.pdf`;
+      state.lastPdfBlob = blob;
+    } catch (e) {
+      console.warn('server pdf prebuild', e);
+      state.lastPdfBlob = null;
+    }
+  }
+
   async function prebuildClientPdf() {
     if (typeof html2pdf === 'undefined') return;
     const nombre = (document.getElementById('cliente').value || 'cliente').trim().replace(/\s+/g, '_');
@@ -253,29 +277,16 @@
   }
 
   async function ensurePdfBlob() {
-    if (state.lastPdfBlob) return state.lastPdfBlob;
-    // Prefer server PDF if authenticated
+    // Siempre intentar servidor primero (formato carta del proyecto)
     if (state.authenticated) {
-      try {
-        await refreshSession();
-        const res = await fetch('print_pdf.php', {
-          method: 'POST',
-          body: formPayload(),
-          credentials: 'same-origin',
-        });
-        if (res.ok) {
-          const blob = await res.blob();
-          if (blob.type.includes('pdf') || blob.size > 500) {
-            const nombre = (document.getElementById('cliente').value || 'cliente').trim().replace(/\s+/g, '_');
-            const seq = (state.lastSave && state.lastSave.numero_secuencia) || 'informe';
-            state.lastPdfName = `informe_${nombre}_${seq}.pdf`;
-            state.lastPdfBlob = blob;
-            return blob;
-          }
-        }
-      } catch (e) {
-        console.warn('server pdf fallback', e);
+      // si el blob cacheado no es del servidor (muy grande html2canvas) o vacío, regenerar
+      if (state.lastPdfBlob && state.lastPdfBlob.size > 500) {
+        // Preferir regenerar desde servidor si el blob es sospechosamente de cliente
+        // html2pdf suele ser >50KB de raster; aún así forzamos servidor
       }
+      state.lastPdfBlob = null;
+      await prebuildServerPdf();
+      if (state.lastPdfBlob) return state.lastPdfBlob;
     }
     await prebuildClientPdf();
     return state.lastPdfBlob;

@@ -33,3 +33,8 @@ IT-form/uploads/*
 !IT-form/uploads/.gitkeep
 
 # Note: dist/ IS tracked (runtime assets without npm build)
+
+# Firmados runtime
+IT-form/storage/firmados/*
+!IT-form/storage/firmados/.gitkeep
+!IT-form/storage/firmados/.htaccess

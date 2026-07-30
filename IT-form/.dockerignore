@@ -5,8 +5,10 @@
 .env.*
 !.env.example
 
-# No meter tooling Docker dentro de la imagen de app
-docker/
+# Tooling Docker (compose/Dockerfile) fuera de la imagen,
+# EXCEPTO el entrypoint que la imagen sí necesita.
+docker/**
+!docker/docker-entrypoint.sh
 
 # Runtime
 storage/db/*
@@ -26,7 +28,7 @@ pdfs-test/
 .DS_Store
 *.zip
 
-# Vendor pesado opcional de ejemplos TCPDF (se niega en web de todos modos)
+# Vendor pesado opcional de ejemplos TCPDF
 tcpdf/examples/
 tcpdf/tools/
 tcpdf/fonts/dejavu-fonts-ttf-*

@@ -19,7 +19,32 @@ body {
   overflow-y: auto;
 }
 .sidebar-header { padding: 25px 20px; border-bottom: 1px solid rgba(255,255,255,.1); text-align: center; }
-.sidebar-header img { max-width: 150px; height: auto; }
+.sidebar-header img { max-width: 150px; height: auto; background: #fff; border-radius: 8px; padding: 6px; }
+.sidebar-brand { margin-top: 10px; font-size: 0.85rem; font-weight: 600; opacity: 0.95; word-break: break-word; }
+.actions-stack { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+.actions-stack .upload-firmado { display: flex; flex-direction: column; gap: 4px; }
+.actions-stack input[type=file] { font-size: 11px; max-width: 180px; }
+.btn-sm { display: inline-block; padding: 6px 10px; border-radius: 6px; font-size: 12px; text-decoration: none; border: none; cursor: pointer; text-align: center; }
+.btn-sm.btn-secondary { background: #546e7a; color: #fff; }
+.btn-sm.btn-primary { background: var(--color-primary, #001F3F); color: #fff; }
+.btn-sm.btn-ok { background: #2e7d32; color: #fff; }
+.muted { color: #999; font-size: 12px; }
+.hint-firmado { color: #666; font-size: 13px; margin-top: 16px; }
+.color-field { display: flex; gap: 10px; align-items: center; }
+.color-field input[type=color] { width: 48px; height: 40px; padding: 0; border: 1px solid #ccc; border-radius: 8px; cursor: pointer; background: #fff; }
+.color-field input[type=text] { flex: 1; min-width: 0; }
+.config-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; align-items: center; }
+.btn-restore {
+  background: #c62828 !important;
+  color: #fff !important;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.btn-restore:hover { background: #b71c1c !important; }
+.restore-hint { color: #666; font-size: 13px; margin-top: 12px; max-width: 640px; line-height: 1.4; }
 .sidebar-menu { list-style: none; padding: 20px 0; margin: 0; }
 .sidebar-menu a {
   display: block;

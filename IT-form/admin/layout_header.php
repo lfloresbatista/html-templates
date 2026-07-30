@@ -9,10 +9,19 @@ if (!isset($pageTitle)) {
 if (!isset($activeNav)) {
     $activeNav = '';
 }
+require_once __DIR__ . '/../config/company.php';
 itform_send_security_headers();
 $csrf = itform_csrf_token();
 $nombre = itform_e($_SESSION['nombre'] ?? '');
 $rol = itform_e($_SESSION['rol'] ?? '');
+
+$company = itform_get_config();
+$brandLogo = itform_logo_url($company);
+$brandName = itform_e($company['nombre_empresa'] ?? 'IT-Form');
+$cp = preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($company['color_primario'] ?? ''))
+    ? $company['color_primario'] : '#001F3F';
+$cs = preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($company['color_secundario'] ?? ''))
+    ? $company['color_secundario'] : '#4CAF50';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -20,14 +29,23 @@ $rol = itform_e($_SESSION['rol'] ?? '');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="<?php echo itform_e($csrf); ?>">
-    <title><?php echo itform_e($pageTitle); ?> - Panel Administrativo</title>
+    <title><?php echo itform_e($pageTitle); ?> - <?php echo $brandName; ?></title>
     <link rel="stylesheet" href="../styles.css">
     <link rel="stylesheet" href="admin.css">
+    <style>
+      :root {
+        --color-primary: <?php echo itform_e($cp); ?>;
+        --color-secondary: <?php echo itform_e($cs); ?>;
+      }
+    </style>
 </head>
 <body>
 <aside class="sidebar">
     <div class="sidebar-header">
-        <img src="../logo.png" alt="ITS Panama">
+        <img src="../<?php echo itform_e($brandLogo); ?>?t=<?php echo (int) (@filemtime(dirname(__DIR__) . '/' . $brandLogo) ?: time()); ?>"
+             alt="<?php echo $brandName; ?>"
+             onerror="this.onerror=null;this.src='../logo.png';">
+        <div class="sidebar-brand"><?php echo $brandName; ?></div>
     </div>
     <ul class="sidebar-menu">
         <li><a href="index.php" class="<?php echo $activeNav === 'dashboard' ? 'active' : ''; ?>">📊 Dashboard</a></li>

@@ -108,7 +108,30 @@ function itform_ensure_jpeg_logo(?string $srcPath): ?string
         return $srcPath;
     }
     $dest = itform_uploads_dir() . '/logo_company_pdf.jpg';
-    // Preferir ImageMagick en rutas fijas (sin discovery dinámico)
+
+    // GD (disponible en imagen Docker)
+    if (function_exists('imagecreatefromstring') && function_exists('imagejpeg')) {
+        $raw = @file_get_contents($srcPath);
+        if ($raw !== false) {
+            $im = @imagecreatefromstring($raw);
+            if ($im !== false) {
+                $w = imagesx($im);
+                $h = imagesy($im);
+                $bg = imagecreatetruecolor(max(1, $w), max(1, $h));
+                $white = imagecolorallocate($bg, 255, 255, 255);
+                imagefilledrectangle($bg, 0, 0, $w, $h, $white);
+                imagecopy($bg, $im, 0, 0, 0, 0, $w, $h);
+                if (@imagejpeg($bg, $dest, 92)) {
+                    imagedestroy($im);
+                    imagedestroy($bg);
+                    return $dest;
+                }
+                imagedestroy($im);
+                imagedestroy($bg);
+            }
+        }
+    }
+
     $convertCandidates = ['/usr/bin/convert', '/usr/local/bin/convert'];
     foreach ($convertCandidates as $convert) {
         if (!is_executable($convert)) {
@@ -121,7 +144,7 @@ function itform_ensure_jpeg_logo(?string $srcPath): ?string
             return $dest;
         }
     }
-    // Python pillow fallback (rutas fijas + python3 del PATH vía is_executable)
+
     $pyCandidates = [
         '/opt/data/tmp/venv-pdf/bin/python',
         '/usr/bin/python3',
@@ -140,6 +163,21 @@ function itform_ensure_jpeg_logo(?string $srcPath): ?string
         if ($code === 0 && is_readable($dest)) {
             return $dest;
         }
+    }
+
+    // Fallbacks embebidos seguros para TCPDF (sin alpha)
+    foreach ([
+        dirname(__DIR__) . '/logo_pdf.jpg',
+        dirname(__DIR__) . '/logo2_pdf.jpg',
+    ] as $fallback) {
+        if (is_readable($fallback)) {
+            return $fallback;
+        }
+    }
+
+    // Nunca devolver PNG/WEBP a TCPDF sin GD (puede fatal error)
+    if (in_array($ext, ['png', 'webp', 'gif'], true)) {
+        return null;
     }
     return $srcPath;
 }
