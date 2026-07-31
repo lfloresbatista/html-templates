@@ -171,6 +171,8 @@ Idempotente. Crea tablas/seeds; **no** crea el DATABASE/USER de MySQL.
 
 ## Flujo de uso
 
-1. Admin → configuración empresa/logo  
-2. Técnico login → formulario → **Guardar**  
-3. **Imprimir** / **Compartir|Descargar**
+1. Abrir la URL → **pantalla de login** (el formulario no es público)
+2. **Admin** → panel → configuración empresa/logo; o **Técnico** → formulario
+3. Completar servicio → **Guardar**
+4. **Imprimir** / **Compartir|Descargar** (PDF formato proyecto)
+5. Opcional en panel Servicios: reimprimir o subir informe firmado (`…-FIRMADO.pdf`)

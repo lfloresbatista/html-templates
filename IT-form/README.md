@@ -12,12 +12,16 @@ Aplicación web PHP para registrar servicios técnicos, branding de empresa, pan
 
 ## Características
 
-- Formulario responsive (móvil/desktop)
-- Guardar en BD con numeración `AAAA-MM-NNNN`
-- Tras guardar: **Imprimir** + **Compartir** (Web Share en móvil) o **Descargar**
-- Panel admin: dashboard, servicios, usuarios, configuración (logo/datos), auditoría
-- PDF carta 8.5×11" con logo y firmas (contacto cliente + técnico de sesión)
+- Formulario de servicio técnico (**login obligatorio** antes de usarlo)
+- Numeración secuencial `AAAA-MM-NNNN` en base de datos
+- Tras guardar: **Imprimir** + **Compartir** (Web Share) o **Descargar**
+- PDF servidor profesional (TCPDF, carta) + fallback cliente
+- Panel admin: dashboard, servicios, usuarios, configuración, auditoría
+- Branding de empresa (logo, colores, datos) en UI y PDF
+- UX móvil: barra de acciones 2×2 fija
 - Auth bcrypt, CSRF, rate-limit, sesión segura
+- Docker BYOD (MySQL compartido o SQLite) o lab con MariaDB oficial
+- Contenedor non-root, proxy-aware (nginx-proxy / Traefik / Cloudflare)
 - Instalación **on-premise** o **Docker**
 
 ## Requisitos
@@ -145,6 +149,31 @@ MIT (excepto TCPDF: LGPL).
 
 ### Pendiente del release manager
 
-- Asignar tag/versión (ej. `v1.0.0`)
-- Confirmar mensaje de commit/release
-- Emitir `Listo (Y)` para push a GitHub
+- ~~Asignar tag/versión~~ → **v1.0.3** (estable, 2026-07-31)
+- ~~Emitir Listo (Y)~~ → publicado en `main`
+
+### 2026-07-30 / 31 — v1.0.2 → v1.0.3
+
+1. **Docker BYOD (v1.0.2)**  
+   - Imagen web con código embebido, non-root :8080  
+   - Sin build de MariaDB; MySQL compartido o SQLite  
+   - Migraciones `database/migrate.php` + healthcheck  
+
+2. **PDF y admin (v1.0.3-beta → estable)**  
+   - PDF siempre vía servidor TCPDF (formato proyecto)  
+   - Sidebar admin con logo/colores de empresa  
+   - Servicios: reimprimir + subir informe firmado (`…-FIRMADO.pdf`)  
+   - Config: color pickers + Restaurar (conserva logos)  
+
+3. **UX móvil**  
+   - Barra fija inferior grid 2×2 (no tapa el formulario)  
+   - Panel arriba-izquierda; tema solo icono  
+
+4. **Seguridad exposición internet (v1.0.3)**  
+   - `index.php` exige sesión → redirect a `admin/login.php`  
+   - Post-login: admin → panel; técnico → formulario  
+   - Redirect whitelist; login sin enlace público al form  
+
+5. **Release**  
+   - Rama `dev` mergeada a `main`  
+   - Tag estable **v1.0.3** (promoción desde `v1.0.3-beta`)
