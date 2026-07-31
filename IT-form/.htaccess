@@ -2,6 +2,9 @@
 Options -Indexes
 ServerSignature Off
 
+# Entrada: preferir PHP; el formulario exige sesión (index.php redirige a login)
+DirectoryIndex index.php index.html
+
 <IfModule mod_authz_core.c>
     <FilesMatch "(^\.env|^\.git|composer\.(json|lock)|secret$|\.sql$|\.sqlite$|\.log$|\.bak$|router\.php$)">
         Require all denied

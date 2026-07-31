@@ -30,6 +30,55 @@ function requireAuth(): void
     }
 }
 
+/**
+ * Destino post-login seguro (evita open redirect).
+ * Solo rutas relativas internas: index.php, ../index.php, servicios.php, etc.
+ */
+function itform_safe_internal_path(?string $path): ?string
+{
+    if ($path === null) {
+        return null;
+    }
+    $path = trim($path);
+    if ($path === '' || str_contains($path, '://') || str_starts_with($path, '//') || str_contains($path, "\n")) {
+        return null;
+    }
+    // no path traversal agresivo
+    if (str_contains($path, '..\\') || preg_match('#(^|/)\.\.(/|$)#', str_replace('\\', '/', $path))) {
+        // permitir solo el prefijo ../index.php del formulario
+        $norm = str_replace('\\', '/', $path);
+        if (!in_array($norm, ['../index.php', '../index.php?logged=1'], true) && !str_starts_with($norm, '../index.php?')) {
+            return null;
+        }
+    }
+    // whitelist prefijos
+    $allowedExact = [
+        'index.php',
+        'servicios.php',
+        'usuarios.php',
+        'configuracion.php',
+        'auditoria.php',
+        '../index.php',
+    ];
+    $norm = strtok(str_replace('\\', '/', $path), '?') ?: '';
+    foreach ($allowedExact as $a) {
+        if ($norm === $a || str_starts_with($norm, $a)) {
+            return $path;
+        }
+    }
+    return null;
+}
+
+function itform_default_post_login_redirect(): string
+{
+    $rol = (string) ($_SESSION['rol'] ?? '');
+    if ($rol === 'admin') {
+        return 'index.php'; // panel dashboard
+    }
+    // técnicos y resto → formulario
+    return '../index.php';
+}
+
 function requireAdmin(): void
 {
     requireAuth();
@@ -128,7 +177,21 @@ function processLogin(string $username, string $password): array
 
         logAudit($db, (int) $user['id'], 'LOGIN', 'usuarios', (int) $user['id'], 'Inicio de sesión exitoso');
 
-        return ['success' => true, 'message' => 'Login exitoso', 'redirect' => 'index.php'];
+        $redirect = itform_default_post_login_redirect();
+        $wanted = itform_safe_internal_path($_POST['redirect'] ?? $_GET['redirect'] ?? null);
+        if ($wanted !== null) {
+            // admin puede ir al form; tecnico no al panel admin
+            $rol = (string) ($user['rol'] ?? '');
+            $wantAdmin = !str_starts_with(str_replace('\\', '/', $wanted), '../');
+            if ($rol === 'admin' || !$wantAdmin) {
+                $redirect = $wanted;
+            } elseif ($rol !== 'admin' && $wantAdmin) {
+                // técnico pidió panel → form
+                $redirect = '../index.php';
+            }
+        }
+
+        return ['success' => true, 'message' => 'Login exitoso', 'redirect' => $redirect];
     } catch (Throwable $e) {
         error_log('login error: ' . $e->getMessage());
         return ['success' => false, 'error' => 'Error del sistema'];

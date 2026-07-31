@@ -2,10 +2,18 @@
 require_once __DIR__ . '/config/security.php';
 require_once __DIR__ . '/config/company.php';
 require_once __DIR__ . '/admin/auth.php';
+
+// Exposición a internet: el formulario exige sesión previa
+if (!isAuthenticated()) {
+    $next = 'redirect=' . rawurlencode('../index.php');
+    header('Location: admin/login.php?' . $next);
+    exit;
+}
+
 itform_send_security_headers();
 $csrf = itform_csrf_token();
-$auth = isAuthenticated();
-$userLabel = $auth ? (string) ($_SESSION['nombre'] ?? $_SESSION['username'] ?? '') : '';
+$auth = true;
+$userLabel = (string) ($_SESSION['nombre'] ?? $_SESSION['username'] ?? '');
 $cfg = itform_get_config();
 $empresa = (string) ($cfg['nombre_empresa'] ?? 'ITS Panama');
 $logoUrl = itform_logo_url($cfg);
