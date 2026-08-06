@@ -3,11 +3,11 @@
 | Campo | Valor |
 |-------|--------|
 | **Producto** | IT-Form (formulario de servicio técnico) |
-| **Versión documentada** | v1.0.1 |
+| **Versión documentada** | v1.0.4 |
 | **Repositorio** | https://github.com/lfloresbatista/html-templates |
 | **Ruta en monorepo** | `IT-form/` |
 | **Audiencia** | Desarrolladores, DevOps, soporte L2/L3 |
-| **Documentos relacionados** | `README.md`, `INSTALACION.md`, release notes `v1.0.1` |
+| **Documentos relacionados** | `README.md`, `INSTALACION.md`, release notes `v1.0.4` |
 
 Este documento describe la arquitectura, convenciones, seguridad, operaciones y procedimientos de soporte de la aplicación. Para instalar desde cero ver **INSTALACION.md**. Para overview de usuario/dev rápido ver **README.md**.
 
@@ -26,7 +26,9 @@ Flujos de usuario:
 
 ```
 [Técnico] login → formulario → Guardar → Imprimir / Compartir|Descargar
+          login → Panel (servicios) → subir firmado → seguimiento de estados
 [Admin]   login → dashboard / servicios / usuarios / configuración / auditoría
+          servicios → Aprobar firmados → completado
 ```
 
 ---
@@ -68,30 +70,40 @@ IT-form/
 │   ├── auth.php              # Login/logout JSON, RBAC helpers, lockout
 │   ├── login.php / index.php
 │   ├── servicios.php / usuarios.php / configuracion.php / auditoria.php
+│   ├── print_servicio.php    # Reimpresión PDF desde BD
+│   ├── download_firmado.php  # Descarga PDF firmado (auth)
 │   ├── layout_header.php / layout_footer.php / admin.css
 │
 ├── api/                      # Endpoints JSON (misma origin, cookies)
 │   ├── session.php           # CSRF + estado de sesión
 │   ├── config.php            # Branding público (sin secretos)
+│   ├── health.php            # Healthcheck (liveness + readiness BD)
 │   └── guardar_servicio.php  # Alta de servicios (auth + CSRF)
 │
 ├── config/                   # No servir por web
+│   ├── version.php           # APP_VERSION + APP_LAST_UPDATE
 │   ├── env.php               # Carga .env
 │   ├── database.php          # PDO singleton mysql|sqlite
-│   ├── security.php          # Sesión, CSRF, rate-limit, headers, escape
-│   └── company.php           # Branding, upload logo, paths
+│   ├── security.php          # Sesión, CSRF, rate-limit, headers, escape, proxy-aware
+│   ├── company.php           # Branding, upload logo, paths, JPEG conversion
+│   └── pdf_report.php        # Generación central PDF TCPDF + helpers de ticket
 │
 ├── database/
 │   ├── init_database.sql     # Schema MySQL (itformdb)
-│   └── init_sqlite.php       # Bootstrap lab SQLite
+│   ├── init_sqlite.php       # Bootstrap lab SQLite
+│   └── migrate.php           # Migración idempotente (MySQL + SQLite)
 │
 ├── docker/
 │   ├── Dockerfile
-│   ├── docker-compose.example.yml
+│   ├── docker-compose.example.yml       # BYOD (sin DB)
+│   ├── docker-compose.with-db.example.yml  # Lab con MariaDB oficial
 │   ├── .env.example
 │   └── docker-entrypoint.sh
 │
-├── storage/                  # Runtime (db sqlite, logs rate-limit) — no público
+├── scripts/                  # Entrypoint de Docker
+│   └── docker-entrypoint.sh
+│
+├── storage/                  # Runtime (db sqlite, logs rate-limit, firmados)
 ├── uploads/                  # Logos subidos (solo imágenes vía web)
 ├── dist/                     # Vendors JS minificados (versionados)
 └── tcpdf/                    # Vendor PDF (examples/tools denegados en web)
@@ -124,11 +136,14 @@ Fuente: `config/env.php` lee `IT-form/.env` si existe; **no sobrescribe** variab
 | `SESSION_NAME` | `ITFORMSESSID` | Nombre cookie sesión |
 | `SESSION_IDLE_MINUTES` | `60` | Timeout inactividad |
 | `FORCE_SECURE_COOKIE` | `0` | Forzar Secure/HSTS-like cookie |
+| `TRUST_PROXIES` | `0` | Confiar headers de proxy (X-Forwarded-*) |
 | `ALLOW_PUBLIC_SAVE` | `0` | `1` = guardar sin login (**no prod**) |
 | `LOGIN_MAX_ATTEMPTS` | `5` | Fallos antes de lockout |
 | `LOGIN_LOCK_MINUTES` | `15` | Duración bloqueo cuenta |
 | `API_RATE_MAX` | `30` | Tope rate-limit API save |
 | `API_RATE_WINDOW` | `60` | Ventana rate-limit (s) |
+| `ITFORM_AUTO_MIGRATE` | `1` | Ejecutar migrate.php al arrancar contenedor |
+| `ITFORM_MIGRATE_RETRIES` | `30` | Reintentos de conexión DB en migrate |
 
 Plantillas:
 
@@ -146,23 +161,25 @@ Plantillas:
 | Tabla | Uso |
 |-------|-----|
 | `configuracion` | Branding: empresa, RUC, email, web, tel, dirección, logos, colores, tema |
-| `usuarios` | Cuentas, roles (`admin`\|`tecnico`\|`usuario`), lockout, bcrypt |
-| `servicios` | Informes técnicos + `numero_secuencia` único |
-| `auditoria` | Log de acciones (LOGIN, CREATE, UPDATE, …) |
+| `usuarios` | Cuentas, roles (`admin`\|`tecnico`\|`usuario`), lockout, bcrypt, **cargo** |
+| `servicios` | Informes técnicos + `numero_secuencia` único + `ticket` (formato negocio) |
+| `auditoria` | Log de acciones (LOGIN, CREATE, UPDATE, APPROVE, UPLOAD, DELETE_FIRMADO…) |
 | `sesiones` | Tabla opcional de tokens (schema presente; auth actual usa sesión PHP) |
 
-### 5.2 Numeración de servicios
+### 5.2 Numeración y tickets
 
-- Formato: `YYYY-MM-NNNN` (ej. `2026-07-0001`).
-- **MySQL:** trigger `before_insert_servicios` si `numero_secuencia` vacío.
-- **SQLite:** generación en aplicación (`itform_next_sequence()` en `config/database.php`).
+- Número de secuencia: `YYYY-MM-NNNN` (ej. `2026-07-0001`) generado por `itform_next_sequence()`.
+- Ticket de negocio: `INICIALES_CLIENTE_DDMMAAAA_HHMM` (ej. `LP_06082026_1950`) generado por `itform_generate_ticket()`.
+- Ambos campos se persisten en `servicios` (`numero_secuencia` y `ticket`).
+- El nombre del archivo PDF sigue el formato del ticket.
 
 ### 5.3 Migraciones
 
 No hay framework de migraciones. Cambios de schema:
 
-1. Actualizar `database/init_database.sql` y `database/init_sqlite.php`.
-2. Para installs existentes: script SQL/ALTER documentado en el PR (ej. columna `ruc` se auto-añade en `admin/configuracion.php` si falta).
+1. Actualizar `database/init_database.sql` y `database/migrate.php`.
+2. `migrate.php` es idempotente (`CREATE TABLE IF NOT EXISTS` + `ALTER TABLE` condicional).
+3. Para installs existentes: `php database/migrate.php` o `ITFORM_AUTO_MIGRATE=1` en Docker.
 
 Seeds de instalación (cambiar en producción):
 
@@ -182,7 +199,8 @@ Hashes con `password_hash(..., PASSWORD_DEFAULT)` (bcrypt/argon según PHP).
 1. `GET admin/login.php` → emite CSRF en meta/hidden.
 2. `POST admin/auth.php` `action=login` + `username`, `password`, `csrf_token`.
 3. Respuesta JSON: `{ success, message|error, redirect }`.
-4. Sesión PHP: `logged_in`, `user_id`, `username`, `nombre`, `email`, `rol`, `login_time`, `last_activity`, `csrf_token` (regenerado).
+4. Sesión PHP: `logged_in`, `user_id`, `username`, `nombre`, `email`, `cargo`, `rol`, `login_time`, `last_activity`, `csrf_token` (regenerado).
+5. Post-login redirect: admin → `admin/index.php`; técnico → `../index.php` (formulario).
 
 ### 6.2 Helpers (`admin/auth.php`)
 
@@ -195,6 +213,8 @@ Hashes con `password_hash(..., PASSWORD_DEFAULT)` (bcrypt/argon según PHP).
 | `currentUserId()` | ID o null |
 | `logAudit(...)` | Inserta en `auditoria` |
 | `processLogin` / `logout` | Núcleo auth |
+| `itform_safe_internal_path()` | Validación anti open-redirect |
+| `itform_default_post_login_redirect()` | Destino por rol |
 
 ### 6.3 Controles de fuerza bruta
 
@@ -209,6 +229,9 @@ Hashes con `password_hash(..., PASSWORD_DEFAULT)` (bcrypt/argon según PHP).
 | Formulario + guardar servicio | Sí | Sí |
 | PDF servidor | Sí (auth) | Sí |
 | Dashboard / listado servicios | Sí | Sí |
+| Subir / eliminar firmado | Sí (estado no completado) | Sí |
+| Cambiar estado de servicio | No | Sí |
+| Aprobar firmado | No | Sí |
 | Usuarios / configuración / auditoría | No (403) | Sí |
 
 ### 6.5 Legacy
@@ -257,10 +280,19 @@ Branding público para UI (sin credenciales):
 }
 ```
 
+### `GET api/health.php`
+
+```json
+{ "success": true, "status": "ok", "db": { "driver": "sqlite", "ok": true } }
+```
+
+Con `?ready=1`: exige BD OK; 503 si no.
+
 ### `POST api/guardar_servicio.php`
 
 - Requiere sesión (si `ALLOW_PUBLIC_SAVE=0`) + CSRF + rate-limit.
-- Campos: `cliente`, `fecha`, `direccion`, `ticket`, `reporte`, `diagnostico`, `trabajoRealizado`, `observaciones`, `recibidoConforme`, `firmaTecnico`, `csrf_token`.
+- Campos: `cliente`, `fecha`, `direccion`, `reporte`, `diagnostico`, `trabajoRealizado`, `observaciones`, `recibidoConforme`, `firmaTecnico`, `csrf_token`.
+- `ticket` se genera automáticamente (`itform_generate_ticket`); `firmaTecnico` se fuerza desde sesión.
 - Éxito:
 
 ```json
@@ -272,7 +304,7 @@ Branding público para UI (sin credenciales):
     "numero_secuencia": "2026-07-0001",
     "fecha_guardado": "...",
     "cliente": "...",
-    "ticket": "..."
+    "ticket": "LP_06082026_1950"
   }
 }
 ```
@@ -283,10 +315,10 @@ Errores típicos: `400` validación, `401` no auth, `403` CSRF, `429` rate-limit
 
 - Auth + CSRF (+ rate-limit).
 - Mismos campos de formulario.
-- **Firma técnico en PDF:** nombre de sesión (`$_SESSION['nombre']`) prioritario sobre POST.
+- **Firma técnico en PDF:** nombre de sesión (`$_SESSION['nombre']`) + cargo (`$_SESSION['cargo']`).
 - **Recibido conforme:** contacto del cliente (`recibidoConforme`).
-- Respuesta: binario PDF (`Content-Disposition: attachment` vía TCPDF `Output(..., 'D')`).
-- Branding leído de `configuracion` (logo → JPEG companion en `uploads/` si hace falta).
+- Respuesta: binario PDF (`Content-Disposition: attachment`).
+- Branding leído de `configuracion`.
 
 ### `POST admin/auth.php`
 
@@ -310,7 +342,7 @@ Errores típicos: `400` validación, `401` no auth, `403` CSRF, `429` rate-limit
 | Estado | Significado |
 |--------|-------------|
 | `saved` | Último save OK → habilita Imprimir/Compartir |
-| `lastSave` | Payload `data` del API (incl. `numero_secuencia`) |
+| `lastSave` | Payload `data` del API (incl. `numero_secuencia`, `ticket`) |
 | `lastPdfBlob` | Blob PDF cacheado para share/print |
 | `shareSupported` | `navigator.share` disponible |
 
@@ -320,12 +352,12 @@ Errores típicos: `400` validación, `401` no auth, `403` CSRF, `429` rate-limit
 2. Tras save OK → habilita **Imprimir** y **Compartir**.
 3. Cualquier `input` posterior invalida `saved` (hay que volver a guardar).
 4. **Imprimir** — abre blob PDF en pestaña (fallback download si popup bloqueado).
-5. **Compartir** — Web Share con `File` PDF si `canShare({files})`; si no, descarga y el label pasa a “Descargar”.
+5. **Compartir** — Web Share con `File` PDF si `canShare({files})`; si no, descarga.
 
 ### PDF cliente vs servidor
 
 - Share/print intentan **servidor** (`print_pdf.php`) si hay sesión; fallback **html2pdf** sobre el DOM del form.
-- Formato preferido de negocio: servidor (carta, logo empresa, firmas fijas).
+- Formato preferido de negocio: servidor (carta, logo empresa, firmas con cargo).
 
 ---
 
@@ -333,14 +365,28 @@ Errores típicos: `400` validación, `401` no auth, `403` CSRF, `429` rate-limit
 
 | Ruta | Rol | Función |
 |------|-----|---------|
-| `admin/login.php` | público | Login |
-| `admin/index.php` | auth | Dashboard métricas |
-| `admin/servicios.php` | auth | Listado + cambio de estado |
-| `admin/usuarios.php` | admin | CRUD usuarios (soft-delete = desactivar) |
-| `admin/configuracion.php` | admin | Empresa + upload logos (`multipart`) |
+| `admin/login.php` | público | Login con branding de empresa |
+| `admin/index.php` | auth | Dashboard: total, pendientes, revisión, completados |
+| `admin/servicios.php` | auth | Listado + subir/eliminar firmado + aprobar (admin) + cambio de estado (admin) |
+| `admin/usuarios.php` | admin | CRUD usuarios (username, nombre, email, **cargo**, rol, activo) |
+| `admin/configuracion.php` | admin | Empresa + color pickers + upload logos + Restaurar fábrica |
 | `admin/auditoria.php` | admin | Lectura log |
 
-Layouts compartidos: `layout_header.php` / `layout_footer.php` + `admin.css` (responsive &lt;900px menú horizontal).
+Layouts compartidos: `layout_header.php` / `layout_footer.php` + `admin.css` (responsive <900px).  
+Versión de la app visible en el sidebar debajo del nombre de empresa.
+
+### Flujo de estados (v1.0.4)
+
+```
+Guardar → pendiente
+Upload firmado → revision (automático)
+Admin aprueba → completado
+Delete firmado → pendiente (solo si no está completado)
+```
+
+- Solo **admin** cambia estados manualmente.
+- Al subir firmado: se oculta "Subir" y aparece "📄 Firmado" + "🗑 Eliminar".
+- Al aprobar: no se puede eliminar ni resubir.
 
 Upload de logo:
 
@@ -367,6 +413,9 @@ Upload de logo:
 | SQL injection | PDO prepared statements |
 | Path traversal logos | sanitiza `..`, basename uploads |
 | Security headers | CSP, nosniff, frame-options, referrer, permissions-policy, HSTS si HTTPS |
+| Proxy-aware | `TRUST_PROXIES`, `X-Forwarded-Proto/For`, `CF-Connecting-IP`, mod_remoteip |
+| Safe redirects | Whitelist de paths post-login |
+| Open redirect prevention | `itform_safe_internal_path()` |
 | Surface reduction | deny `.env`, `config/`, `database/`, `storage/`, `docker/`, tcpdf examples/tools |
 
 ### Superficie denegada (Apache / router)
@@ -426,25 +475,25 @@ docker compose -f docker/docker-compose.example.yml --env-file .env up -d --buil
 | Proxy | `TRUST_PROXIES=1`, RemoteIP, `VIRTUAL_PORT=8080` |
 | Health | `GET /api/health.php` |
 
-### 11.2.1 MySQL compartido (sysadmin)
+### 11.3 MySQL compartido (sysadmin)
 
 1. Crear DB/user/pass en el MySQL existente.  
 2. Poner contenedor web en la misma red Docker.  
 3. `DB_HOST=<servicio>` + credenciales.  
 4. Arrancar solo la app; migrate crea tablas.
 
-### 11.3 Lab `php -S`
+### 11.4 Lab `php -S`
 
 ```bash
-php database/init_sqlite.php   # si SQLite
+php database/migrate.php
 php -S 127.0.0.1:8080 router.php
 ```
 
 **Siempre** usar `router.php` para aplicar deny-list (el server built-in no lee `.htaccess`).
 
-### 11.4 Registry (opcional futuro)
+### 11.5 Registry (GHCR)
 
-Se puede publicar la imagen web en **GHCR** (`ghcr.io/<user>/it-form:<tag>`) y reemplazar `build:` por `image:` en compose. Ver notas de arquitectura en conversaciones de release; no es obligatorio en v1.0.1.
+Se puede publicar la imagen web en **GHCR** (`ghcr.io/<user>/it-form:<tag>`) y reemplazar `build:` por `image:` en compose.
 
 ---
 
@@ -456,21 +505,22 @@ Se puede publicar la imagen web en **GHCR** (`ghcr.io/<user>/it-form:<tag>`) y r
 4. No commitear: `.env`, `storage/db/*.sqlite`, `storage/logs/*`, `uploads/*` (excepto placeholders), `pdfs-test/`.
 5. Probar:
    - Login admin/tecnico
-   - Guardar servicio + secuencia
-   - PDF contiene branding y firmas correctas
+   - Guardar servicio + ticket formateado
+   - PDF contiene branding y firmas correctas (nombre + cargo)
+   - Flujo de estados (pendiente → revision → completado)
    - Deny de paths sensibles
    - Técnico no entra a `usuarios.php` (403)
-6. Cambios de schema: actualizar ambos inits + notas de upgrade.
+6. Cambios de schema: actualizar `migrate.php` + `init_database.sql`.
 7. Estilo de commits sugerido: Conventional Commits (`feat:`, `fix:`, `security:`, `docs:`).
 
 ### Puntos de extensión frecuentes
 
 | Necesidad | Archivos típicos |
 |-----------|------------------|
-| Nuevo campo en informe | `index.php`, `script.js`, `api/guardar_servicio.php`, `print_pdf.php`, schema `servicios` |
+| Nuevo campo en informe | `index.php`, `script.js`, `api/guardar_servicio.php`, `config/pdf_report.php`, schema `servicios` |
 | Nuevo rol | `auth.php` RBAC + páginas admin |
 | Nuevo branding | `config/company.php`, `admin/configuracion.php` |
-| Otro formato PDF | `print_pdf.php` (clase `ITServicePDF`) |
+| Otro formato PDF | `config/pdf_report.php` (función `itform_build_service_pdf`) |
 | i18n | Hoy strings en ES embebidos; no hay capa i18n |
 
 ---
@@ -490,32 +540,16 @@ Se puede publicar la imagen web en **GHCR** (`ghcr.io/<user>/it-form:<tag>`) y r
 
 | Síntoma | Causas probables | Acción |
 |---------|------------------|--------|
-| “Error de conexión a la base de datos” | `.env` mal, DB caída, user/pass | Verificar `DB_*`, `docker compose ps`, grants `itform_usr` |
+| "Error de conexión a la base de datos" | `.env` mal, DB caída, user/pass | Verificar `DB_*`, `docker compose ps`, grants `itform_usr` |
 | Login siempre incorrecto | Seeds no cargados / hash viejo | Reimportar init o reset password con `password_hash` |
 | 401 al guardar | Sesión expirada / cookies blocked | Re-login; revisar `SESSION_IDLE_MINUTES` y HTTPS/Secure |
 | 403 CSRF | Token viejo / multi-pestaña | Recargar página; un solo origen |
-| PDF sin logo / error Imagick-GD | PNG sin GD | Subir logo y generar companion JPEG; o instalar `gd` |
+| PDF sin logo | PNG sin GD | Subir logo y generar companion JPEG; o instalar `gd` |
 | PDF firmas incorrectas | No hay sesión al imprimir | Imprimir solo tras login; técnico sale de sesión |
 | 403 en admin/config | Usuario no admin | Usar cuenta `admin` |
 | Logo no se ve | Path uploads / permisos | `chown www-data uploads`; URL `uploads/...` |
-| Secuencia duplicada (raro MySQL) | Trigger ausente | Reaplicar trigger del init SQL |
-
-### Comandos útiles
-
-```bash
-# Salud contenedores
-docker compose -f docker/docker-compose.example.yml --env-file .env ps
-docker compose ... logs -f web
-
-# PHP lint
-find . -name '*.php' ! -path './tcpdf/*' -print0 | xargs -0 -n1 php -l
-
-# Verificar que secret no reapareció
-test ! -f secret && git log --all -- IT-form/secret | head
-
-# Reset lab SQLite
-php database/init_sqlite.php
-```
+| 500 en servicios | Schema desactualizado (falta columna `cargo`) | `php database/migrate.php` |
+| Estado no cambia | El estado enviado no está en la whitelist | Solo admin; estados válidos: pendiente, revision, completado, cancelado |
 
 ---
 
@@ -551,7 +585,7 @@ php database/init_sqlite.php
 
 ## 15. Versionado y release
 
-- Tags del monorepo: `v1.0.1` documenta IT-Form endurecido.
+- Tags del monorepo: `v1.0.4` documenta IT-Form endurecido.
 - Mensajes de release deben listar features + mitigaciones de seguridad.
 - Tras rewrite de historial: comunicar force-push a colaboradores.
 
@@ -576,7 +610,7 @@ Al actualizar TCPDF/html2pdf: probar PDF servidor y cliente; mantener deny de ex
 
 ---
 
-## 17. Mapa rápido de “dónde toco X”
+## 17. Mapa rápido de "dónde toco X"
 
 | Quiero… | Empiezo en… |
 |---------|-------------|
@@ -584,14 +618,15 @@ Al actualizar TCPDF/html2pdf: probar PDF servidor y cliente; mantener deny de ex
 | Lógica de botones/share | `script.js` |
 | Estilos / móvil | `styles.css`, `admin/admin.css` |
 | Reglas de guardado | `api/guardar_servicio.php` |
-| Diseño PDF | `print_pdf.php` |
+| Diseño PDF | `config/pdf_report.php` |
 | Login / roles | `admin/auth.php` |
 | Branding | `admin/configuracion.php`, `config/company.php` |
 | Conexión BD | `config/database.php`, `.env` |
 | Headers/CSRF/sesión | `config/security.php` |
-| Schema | `database/init_*.sql/php` |
+| Schema | `database/migrate.php`, `database/init_database.sql` |
 | Empaquetado | `docker/*` |
 | Hardening web | `.htaccess`, `router.php` |
+| Versión de la app | `config/version.php` |
 
 ---
 
@@ -605,11 +640,25 @@ Al actualizar TCPDF/html2pdf: probar PDF servidor y cliente; mantener deny de ex
 
 ---
 
-## 19. Historial de este documento
+## 19. Bitácora de seguridad
+
+| Fecha | Versión | Actividad | Resultado |
+|-------|---------|-----------|-----------|
+| 2026-07-29 | v1.0.1 | Auditoría inicial SecSDLC (H-01…H-15) | 15 hallazgos mitigados; auth bcrypt, CSRF, rate-limit, headers |
+| 2026-07-29 | v1.0.1 | Purga de `secret` del historial git | `git-filter-repo`: 0 ocurrencias en todas las refs |
+| 2026-07-30 | v1.0.2 | Auditoría hardening proxy/non-root | Docker non-root :8080, TRUST_PROXIES, mod_remoteip |
+| 2026-07-31 | v1.0.3 | Login obligatorio exposición internet | Safe redirect whitelist; x-forwarded-proto para cookies seguras |
+| 2026-08-05 | v1.0.4-rc | Scan estático pre-release (27 archivos PHP) | 0 críticas; 1 bajo (exec en conversión logo con escapeshellarg) |
+| 2026-08-06 | v1.0.4 | Test funcional + revisión de seguridad final | Todos los flujos OK; CSRF, auth, prepared statements en endpoints POST |
+
+---
+
+## 20. Historial de este documento
 
 | Fecha | Cambio |
 |-------|--------|
-| 2026-07-29 | Creación inicial alineada a **IT-Form v1.0.1** (post SecSDLC, branding, Docker, purge secret) |
+| 2026-07-29 | Creación inicial alineada a **IT-Form v1.0.1** |
+| 2026-08-06 | Actualización a **v1.0.4**: ticket formato, cargo, estados pendiente→revision→completado, sidebar version, bitácora de seguridad |
 
 ---
 
