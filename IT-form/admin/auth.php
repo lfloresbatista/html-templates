@@ -126,7 +126,7 @@ function processLogin(string $username, string $password): array
     try {
         $db = getDB();
         $stmt = $db->prepare(
-            'SELECT id, username, password_hash, email, nombre_completo, rol, activo,
+            'SELECT id, username, password_hash, email, nombre_completo, cargo, rol, activo,
                     intentos_fallidos, bloqueado_hasta
              FROM usuarios WHERE username = :u LIMIT 1'
         );
@@ -170,6 +170,7 @@ function processLogin(string $username, string $password): array
         $_SESSION['username'] = $user['username'];
         $_SESSION['nombre'] = $user['nombre_completo'];
         $_SESSION['email'] = $user['email'];
+        $_SESSION['cargo'] = $user['cargo'] ?? '';
         $_SESSION['rol'] = $user['rol'];
         $_SESSION['login_time'] = time();
         // renovar CSRF post-login

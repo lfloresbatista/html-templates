@@ -1,5 +1,6 @@
     </div><!-- .dashboard-content -->
 </div><!-- .main-content -->
+
 <script>
 (function () {
   const themeToggle = document.getElementById('themeToggle');

@@ -54,6 +54,7 @@ function itform_migrate_mysql(PDO $db): array
 
     // columnas opcionales si schema viejo
     itform_mysql_add_column($db, 'configuracion', 'ruc', "VARCHAR(100) DEFAULT ''");
+    itform_mysql_add_column($db, 'usuarios', 'cargo', "VARCHAR(150) DEFAULT ''");
 
     $db->exec("
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -62,6 +63,7 @@ function itform_migrate_mysql(PDO $db): array
             password_hash VARCHAR(255) NOT NULL,
             email VARCHAR(255) NOT NULL,
             nombre_completo VARCHAR(255) NOT NULL,
+            cargo VARCHAR(150) DEFAULT '',
             rol VARCHAR(20) DEFAULT 'tecnico',
             activo TINYINT(1) DEFAULT 1,
             ultimo_acceso DATETIME DEFAULT NULL,
@@ -189,6 +191,7 @@ function itform_migrate_sqlite(PDO $db): array
             password_hash TEXT NOT NULL,
             email TEXT NOT NULL,
             nombre_completo TEXT NOT NULL,
+            cargo TEXT DEFAULT '',
             rol TEXT DEFAULT 'tecnico',
             activo INTEGER DEFAULT 1,
             ultimo_acceso TEXT DEFAULT NULL,

@@ -219,10 +219,13 @@
       }
       if (result.success) {
         state.lastSave = result.data || {};
-        const seq = state.lastSave.numero_secuencia || '';
-        mostrarMensaje(`✅ Guardado | N° ${seq}`, 'success');
+        const ticketValue = state.lastSave.ticket || state.lastSave.numero_secuencia || '';
+        mostrarMensaje(`✅ Guardado | Ticket: ${ticketValue}`, 'success');
         const ticket = document.getElementById('ticket');
-        if (ticket && seq) ticket.value = seq;
+        if (ticket && ticketValue) {
+          ticket.value = ticketValue;
+          ticket.readOnly = true;
+        }
         // Prefer server PDF always after save (formato proyecto TCPDF). Client html2pdf solo fallback.
         setPostSaveEnabled(true);
         state.lastPdfBlob = null;
@@ -256,9 +259,10 @@
       const blob = await res.blob();
       const ct = (res.headers.get('content-type') || blob.type || '').toLowerCase();
       if (!ct.includes('pdf') && blob.size < 800) throw new Error('not pdf');
-      const nombre = (document.getElementById('cliente').value || 'cliente').trim().replace(/\s+/g, '_');
-      const seq = (state.lastSave && state.lastSave.numero_secuencia) || 'informe';
-      state.lastPdfName = `informe_${nombre}_${seq}.pdf`;
+      const ticketVal = (state.lastSave && state.lastSave.ticket)
+        || (document.getElementById('ticket') && document.getElementById('ticket').value)
+        || 'informe';
+      state.lastPdfName = String(ticketVal).replace(/\.pdf$/i, '') + '.pdf';
       state.lastPdfBlob = blob;
     } catch (e) {
       console.warn('server pdf prebuild', e);
@@ -268,9 +272,10 @@
 
   async function prebuildClientPdf() {
     if (typeof html2pdf === 'undefined') return;
-    const nombre = (document.getElementById('cliente').value || 'cliente').trim().replace(/\s+/g, '_');
-    const seq = (state.lastSave && state.lastSave.numero_secuencia) || 'informe';
-    state.lastPdfName = `informe_${nombre}_${seq}.pdf`;
+    const ticketVal = (state.lastSave && state.lastSave.ticket)
+      || (document.getElementById('ticket') && document.getElementById('ticket').value)
+      || 'informe';
+    state.lastPdfName = String(ticketVal).replace(/\.pdf$/i, '') + '.pdf';
     pdfConfig.filename = state.lastPdfName;
     const worker = html2pdf().set(pdfConfig).from(el.form).outputPdf('blob');
     state.lastPdfBlob = await worker;

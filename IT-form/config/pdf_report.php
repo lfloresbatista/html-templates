@@ -16,7 +16,7 @@ function itform_pdf_plain($data): string
  * @param array{
  *   cliente:string,fecha:string,direccion:string,ticket:string,
  *   reporte:string,diagnostico:string,trabajo:string,observaciones:string,
- *   recibido:string,firma:string
+ *   recibido:string,firma:string,cargo:string
  * } $data
  * @return string bytes PDF
  */
@@ -191,16 +191,17 @@ function itform_build_service_pdf(array $data, ?array $cfg = null): string
     $writeField($pdf, 'Trabajo Realizado:', $data['trabajo'], $contentWidth);
     $writeField($pdf, 'Observaciones / Recomendaciones:', $data['observaciones'], $contentWidth);
 
-    $signatureBlockHeight = 48;
+    // Firma justo debajo de Observaciones/Recomendaciones.
+    // Si no cabe en la página actual (≈12 mm), salta a nueva y sigue desde ahí.
+    $sigNeeded = 50; // mm aproximados para el bloque de firmas
+    $sigLineGap = 3;
     $footerReserve = 28;
     $pageH = $pdf->getPageHeight();
     $yNow = $pdf->GetY();
-    $targetY = $pageH - $footerReserve - $signatureBlockHeight;
-    if ($yNow < $targetY) {
-        $pdf->SetY($targetY);
-    } else {
+    if (($yNow + $sigNeeded) > ($pageH - $footerReserve)) {
         $pdf->AddPage();
-        $pdf->SetY($pageH - $footerReserve - $signatureBlockHeight);
+    } else {
+        $pdf->Ln(2);
     }
 
     $pdf->SetDrawColor($cr, $cg, $cb);
@@ -216,46 +217,101 @@ function itform_build_service_pdf(array $data, ?array $cfg = null): string
 
     $pdf->SetDrawColor(0, 0, 0);
     $pdf->SetLineWidth(0.3);
+    // línea de firma cliente
     $pdf->Line($xLeft + 5, $ySig + 14, $xLeft + $col - 5, $ySig + 14);
+    // línea de firma técnico
     $pdf->Line($xRight + 5, $ySig + 14, $xRight + $col - 5, $ySig + 14);
 
-    $pdf->SetFont('helvetica', 'B', 10);
+    // Contacto cliente
+    $pdf->SetFont('helvetica', 'B', 9);
     $pdf->SetXY($xLeft, $ySig + 16);
-    $pdf->Cell($col, 5, 'Recibido conforme (cliente)', 0, 0, 'C');
+    $pdf->Cell($col, 4, 'Recibido conforme', 0, 0, 'C');
+    $pdf->SetFont('helvetica', '', 9);
+    $pdf->SetXY($xLeft, $ySig + 21);
+    $pdf->Cell($col, 4, $data['recibido'], 0, 0, 'C');
+
+    // Técnico
+    $cargoLine = (string) ($data['cargo'] ?? '');
+    $pdf->SetFont('helvetica', 'B', 9);
     $pdf->SetXY($xRight, $ySig + 16);
-    $pdf->Cell($col, 5, 'Técnico del informe', 0, 1, 'C');
-
-    $pdf->SetFont('helvetica', '', 10);
-    $pdf->SetXY($xLeft, $ySig + 22);
-    $pdf->Cell($col, 5, $data['recibido'], 0, 0, 'C');
-    $pdf->SetXY($xRight, $ySig + 22);
-    $pdf->Cell($col, 5, $data['firma'], 0, 1, 'C');
-
-    $pdf->SetFont('helvetica', 'I', 8);
-    $pdf->SetTextColor(90, 90, 90);
-    $pdf->SetXY($xLeft, $ySig + 28);
-    $pdf->Cell($col, 4, 'Contacto de la empresa/cliente atendido', 0, 0, 'C');
-    $pdf->SetXY($xRight, $ySig + 28);
-    $pdf->Cell($col, 4, 'Usuario que elaboró el informe', 0, 1, 'C');
+    $pdf->Cell($col, 4, ($cargoLine !== '' ? 'Técnico responsable' : 'Técnico del informe'), 0, 0, 'C');
+    $pdf->SetFont('helvetica', '', 9);
+    $pdf->SetXY($xRight, $ySig + 21);
+    $pdf->Cell($col, 4, $data['firma'], 0, 0, 'C');
+    if ($cargoLine !== '') {
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->SetTextColor(70, 70, 70);
+        $pdf->SetXY($xRight, $ySig + 26);
+        $pdf->Cell($col, 4, $cargoLine, 0, 0, 'C');
+        $pdf->SetTextColor(0, 0, 0);
+    }
 
     return $pdf->Output('', 'S');
 }
 
-function itform_pdf_filename(array $data): string
+
+
+function itform_client_initials(string $nombre): string
 {
-    $safeClient = preg_replace('/[^A-Za-z0-9_-]+/', '_', $data['cliente'] ?? 'cliente');
-    $safeTicket = preg_replace('/[^A-Za-z0-9_-]+/', '_', $data['ticket'] ?? 'informe');
-    return 'informe_' . $safeClient . '_' . $safeTicket . '.pdf';
+    $nombre = trim($nombre);
+    // quitar sufijos SA/SRL etc
+    $nombre = preg_replace('/\s+(S\.?A\.?|SRL|INC|LLC)\s*$/i', '', $nombre);
+    $words = preg_split('/\s+/', $nombre);
+    $init = '';
+    foreach ($words as $w) {
+        if ($w !== '') {
+            $init .= mb_strtoupper(mb_substr($w, 0, 1));
+        }
+    }
+    if ($init === '') {
+        $init = 'CL';
+    }
+    return mb_substr($init, 0, 6);
 }
 
-/** Nombre informe firmado: {BASE}-FIRMADO.pdf */
+function itform_pdf_basename(string $cliente, string $fechaGuardado): string
+{
+    $ini = itform_client_initials($cliente);
+    $ts = strtotime($fechaGuardado);
+    if ($ts === false) {
+        $ts = time();
+    }
+    $stamp = date('dmY_Hi', $ts);
+    return $ini . '_' . $stamp . '.pdf';
+}
+
+
+
+function itform_pdf_filename(array $data): string
+{
+    // Prefer ticket ya formateado (INICIALES_DDMMAAAA_HHMM)
+    $ticket = trim((string) ($data['ticket'] ?? ''));
+    if ($ticket !== '' && preg_match('/^[A-Z0-9]{2,8}_\d{8}_\d{4}$/i', $ticket)) {
+        return strtoupper(preg_replace('/\.pdf$/i', '', $ticket)) . '.pdf';
+    }
+    $fecha = (string) ($data['fecha'] ?? $data['fecha_guardado'] ?? date('Y-m-d H:i:s'));
+    $fecha = str_replace('T', ' ', $fecha);
+    return itform_pdf_basename($data['cliente'] ?? 'cliente', $fecha);
+}
+
+/** Genera ticket de negocio: INICIALES_DDMMAAAA_HHMM (sin .pdf) */
+function itform_generate_ticket(string $cliente, ?string $fecha = null): string
+{
+    $fecha = $fecha ?: date('Y-m-d H:i:s');
+    $fecha = str_replace('T', ' ', $fecha);
+    $base = itform_pdf_basename($cliente, $fecha);
+    return preg_replace('/\.pdf$/i', '', $base);
+}
+
+/** Nombre informe firmado: INICIALES_DDMMAAAA_HHMM-FIRMADO.pdf */
 function itform_signed_pdf_basename(array $servicio): string
 {
-    $seq = preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) ($servicio['numero_secuencia'] ?? 'informe'));
-    $cli = preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) ($servicio['cliente'] ?? 'cliente'));
-    $base = trim($seq . '_' . $cli, '_');
-    if ($base === '') {
-        $base = 'INFORME';
-    }
-    return strtoupper($base) . '-FIRMADO.pdf';
+    $base = itform_pdf_basename(
+        $servicio['cliente'] ?? 'cliente',
+        $servicio['fecha_guardado'] ?? date('Y-m-d H:i:s')
+    );
+    // quitar .pdf si viene
+    $base = preg_replace('/\.pdf$/i', '', $base);
+    return $base . '-FIRMADO.pdf';
 }
+

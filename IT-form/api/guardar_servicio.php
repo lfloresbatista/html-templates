@@ -47,12 +47,18 @@ try {
     $observaciones = itform_sanitize_text($_POST['observaciones'] ?? '');
     $recibidoConforme = itform_sanitize_text($_POST['recibidoConforme'] ?? '');
     $firmaTecnico = itform_sanitize_text($_POST['firmaTecnico'] ?? '');
+    // Forzar nombre de sesión (no editable por cliente)
+    if (isAuthenticated()) {
+        $sessName = trim((string) ($_SESSION['nombre'] ?? ''));
+        if ($sessName !== '') {
+            $firmaTecnico = $sessName;
+        }
+    }
 
     $required = [
         'cliente' => $cliente,
         'fecha' => $fechaServicio,
         'direccion' => $direccion,
-        'ticket' => $ticket,
         'reporte' => $reporteCliente,
         'diagnostico' => $diagnostico,
         'trabajoRealizado' => $trabajoRealizado,
@@ -67,6 +73,10 @@ try {
 
     $usuarioId = currentUserId();
     $numero = itform_next_sequence($db);
+
+    // Ticket de negocio: INICIALES_DDMMAAAA_HHMM (ignora POST del cliente)
+    require_once __DIR__ . '/../config/pdf_report.php';
+    $ticket = itform_generate_ticket($cliente, $fechaServicio ?: date('Y-m-d H:i:s'));
 
     $now = date('Y-m-d H:i:s');
     $sql = 'INSERT INTO servicios (
@@ -95,7 +105,7 @@ try {
         ':recibido' => $recibidoConforme,
         ':firma' => $firmaTecnico,
         ':usuario_id' => $usuarioId,
-        ':estado' => 'completado',
+        ':estado' => 'pendiente',
         ':guardado' => $now,
     ]);
 

@@ -149,7 +149,7 @@ MIT (excepto TCPDF: LGPL).
 
 ### Pendiente del release manager
 
-- ~~Asignar tag/versión~~ → **v1.0.3** (estable, 2026-07-31)
+- ~~Asignar tag/versión~~ → **v1.0.4** (estable, 2026-08-06)
 - ~~Emitir Listo (Y)~~ → publicado en `main`
 
 ### 2026-07-30 / 31 — v1.0.2 → v1.0.3
@@ -177,3 +177,35 @@ MIT (excepto TCPDF: LGPL).
 5. **Release**  
    - Rama `dev` mergeada a `main`  
    - Tag estable **v1.0.3** (promoción desde `v1.0.3-beta`)
+
+### 2026-08-05 / 06 — v1.0.3 → v1.0.4
+
+1. **Formato de ticket**  
+   - Ticket generado como `INICIALES_CLIENTE_DDMMAAAA_HHMM` (ej. `LP_06082026_1950`)  
+   - Campo ticket **readonly** en formulario; autoasignado al guardar  
+   - Nombre de archivo PDF = ticket; firmado = `…-FIRMADO.pdf`  
+
+2. **Cargo del técnico**  
+   - Nueva columna `usuarios.cargo` (ej. "Ingeniero de Redes")  
+   - CRUD en admin/usuarios; sesión lo carga en login  
+   - PDF: bajo la línea de firma aparece el nombre + cargo  
+
+3. **Flujo de estados: pendiente → revisión → completado**  
+   - Upload firmado cambia automáticamente a `revision`  
+   - Solo admin cambia estados; dashboard con tarjeta "En Revisión"  
+   - Admin: botón **✅ Aprobar**; tras aprobar no se puede eliminar/resubir  
+   - Delete firmado → vuelve a `pendiente` (solo antes de aprobar)  
+
+4. **Firma en PDF pegada a Observaciones**  
+   - Sin espacio en blanco ni anclaje al pie de página  
+   - Si no cabe (~50 mm), salta de página y sigue desde ahí  
+
+5. **Versión visible en sidebar del admin**  
+   - `v1.0.4` + fecha debajo del nombre de empresa  
+   - También en footer del formulario público y login  
+
+6. **Panel accesible para técnicos**  
+   - Botón `🔐 Panel` va directo a `admin/servicios.php` (no solo login)  
+
+7. **Release**  
+   - Tag estable **v1.0.4** — directo a `main`

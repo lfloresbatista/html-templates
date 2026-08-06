@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/config/security.php';
+require_once __DIR__ . '/config/version.php';
 require_once __DIR__ . '/config/company.php';
 require_once __DIR__ . '/admin/auth.php';
 
@@ -119,7 +120,7 @@ $footerLine = implode(' | ', $footerBits);
     </button>
   </div>
 
-  <a href="admin/login.php" class="admin-link" id="adminLink"><?php echo $auth ? '🔐 Panel' : '🔐 Login'; ?></a>
+  <a href="admin/servicios.php" class="admin-link" id="adminLink">🔐 Panel</a>
 
   <header id="encabezado" role="banner">
     <img src="<?php echo itform_e($logoUrl); ?>" alt="<?php echo itform_e($empresa); ?> Logo" id="logo">
@@ -164,10 +165,10 @@ $footerLine = implode(' | ', $footerBits);
             </label>
           </div>
           <div class="columna">
-            <label for="ticket">Ticket No.:
-              <input type="text" id="ticket" name="ticket" required pattern="[A-Za-z0-9\-]+" placeholder="Ej: TK-001" aria-required="true" aria-describedby="ticketHelp">
+            <label for="ticket">N° de Ticket:
+              <input type="text" id="ticket" name="ticket" readonly value="" placeholder="Se asigna al guardar" aria-describedby="ticketHelp">
             </label>
-            <small id="ticketHelp" class="help-text">Solo letras, números y guiones</small>
+            <small id="ticketHelp" class="help-text">Asignado automáticamente al guardar.</small>
           </div>
         </div>
       </fieldset>
@@ -248,6 +249,10 @@ $footerLine = implode(' | ', $footerBits);
       <img src="<?php echo itform_e($logoFooter); ?>" alt="Logo footer" id="poweredByLogo">
     </div>
     <p class="footer-info" id="footerInfo"><?php echo itform_e($footerLine); ?></p>
+    <p style="margin-top:8px; font-size:0.75rem; color:#888;">
+        IT-Form v<?php echo defined('APP_VERSION') ? APP_VERSION : '1.0.3'; ?> 
+        &nbsp;•&nbsp; Última actualización: <?php echo defined('APP_LAST_UPDATE') ? APP_LAST_UPDATE : '2026-08-06'; ?>
+    </p>
   </footer>
 
   <script src="script.js" defer></script>

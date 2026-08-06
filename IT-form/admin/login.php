@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/../config/version.php';
 require_once __DIR__ . '/../config/company.php';
 
 $redirectIn = itform_safe_internal_path($_GET['redirect'] ?? null) ?? '';
@@ -104,6 +105,10 @@ $colorPrimary = preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($cfg['color_primario
             <button type="submit" class="btn-login" id="loginBtn">Iniciar Sesión</button>
         </form>
         <p class="login-note">Acceso restringido. Se requiere autenticación.</p>
+            <p style="text-align:center; margin-top:20px; font-size:0.75rem; color:#888;">
+            IT-Form v<?php echo defined('APP_VERSION') ? APP_VERSION : '1.0.3'; ?> 
+            &nbsp;•&nbsp; <?php echo defined('APP_LAST_UPDATE') ? APP_LAST_UPDATE : '2026-08-06'; ?>
+        </p>
     </div>
     <script>
     (function () {

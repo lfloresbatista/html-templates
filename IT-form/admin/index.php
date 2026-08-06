@@ -25,10 +25,14 @@ try {
 }
 
 $pendientes = 0;
+$revision = 0;
 $completados = 0;
 foreach ($serviciosPorEstado as $row) {
     if ($row['estado'] === 'pendiente') {
         $pendientes = (int) $row['cantidad'];
+    }
+    if ($row['estado'] === 'revision') {
+        $revision = (int) $row['cantidad'];
     }
     if ($row['estado'] === 'completado') {
         $completados = (int) $row['cantidad'];
@@ -44,6 +48,7 @@ require __DIR__ . '/layout_header.php';
     <div class="stat-card primary"><div class="value"><?php echo $totalServicios; ?></div><div class="label">Total Servicios</div></div>
     <div class="stat-card success"><div class="value"><?php echo $totalUsuarios; ?></div><div class="label">Usuarios Activos</div></div>
     <div class="stat-card warning"><div class="value"><?php echo $pendientes; ?></div><div class="label">Pendientes</div></div>
+    <div class="stat-card revision"><div class="value"><?php echo $revision; ?></div><div class="label">En Revisión</div></div>
     <div class="stat-card info"><div class="value"><?php echo $completados; ?></div><div class="label">Completados</div></div>
 </div>
 <div class="card">

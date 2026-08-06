@@ -10,6 +10,7 @@ if (!isset($activeNav)) {
     $activeNav = '';
 }
 require_once __DIR__ . '/../config/company.php';
+require_once __DIR__ . '/../config/version.php';
 itform_send_security_headers();
 $csrf = itform_csrf_token();
 $nombre = itform_e($_SESSION['nombre'] ?? '');
@@ -46,6 +47,11 @@ $cs = preg_match('/^#[0-9A-Fa-f]{6}$/', (string) ($company['color_secundario'] ?
              alt="<?php echo $brandName; ?>"
              onerror="this.onerror=null;this.src='../logo.png';">
         <div class="sidebar-brand"><?php echo $brandName; ?></div>
+        <div class="sidebar-version">
+            <span>v<?php echo defined('APP_VERSION') ? APP_VERSION : '1.0.3'; ?></span>
+            <br>
+            <small><?php echo defined('APP_LAST_UPDATE') ? APP_LAST_UPDATE : '2026-08-06'; ?></small>
+        </div>
     </div>
     <ul class="sidebar-menu">
         <li><a href="index.php" class="<?php echo $activeNav === 'dashboard' ? 'active' : ''; ?>">📊 Dashboard</a></li>

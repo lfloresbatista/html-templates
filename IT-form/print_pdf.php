@@ -37,7 +37,7 @@ if (!itform_rate_limit('pdf_server', 20, 60)) {
 }
 
 $requiredFields = [
-    'cliente', 'fecha', 'direccion', 'ticket',
+    'cliente', 'fecha', 'direccion',
     'reporte', 'diagnostico', 'trabajoRealizado',
     'observaciones', 'recibidoConforme',
 ];
@@ -45,11 +45,12 @@ foreach ($requiredFields as $field) {
     if (!isset($_POST[$field]) || trim((string) $_POST[$field]) === '') {
         http_response_code(400);
         header('Content-Type: application/json');
-        echo json_encode(['error' => 'Campos requeridos incompletos']);
+        echo json_encode(['error' => 'Campos requeridos incompletos: ' . $field]);
         exit;
     }
 }
 
+// Técnico SIEMPRE de sesión (no se puede falsificar desde el formulario)
 $tecnicoNombre = '';
 if (isAuthenticated()) {
     $tecnicoNombre = itform_pdf_plain($_SESSION['nombre'] ?? $_SESSION['username'] ?? '');
@@ -64,17 +65,26 @@ if ($tecnicoNombre === '') {
     exit;
 }
 
+$cliente = itform_pdf_plain($_POST['cliente']);
+$fecha = itform_pdf_plain($_POST['fecha']);
+$ticket = itform_pdf_plain($_POST['ticket'] ?? '');
+// Si vacío o legado AAAA-MM-NNNN → generar formato negocio
+if ($ticket === '' || preg_match('/^\d{4}-\d{2}-\d{4}$/', $ticket)) {
+    $ticket = itform_generate_ticket($cliente, str_replace('T', ' ', $fecha));
+}
+
 $data = [
-    'cliente' => itform_pdf_plain($_POST['cliente']),
-    'fecha' => itform_pdf_plain($_POST['fecha']),
+    'cliente' => $cliente,
+    'fecha' => $fecha,
     'direccion' => itform_pdf_plain($_POST['direccion']),
-    'ticket' => itform_pdf_plain($_POST['ticket']),
+    'ticket' => $ticket,
     'reporte' => itform_pdf_plain($_POST['reporte']),
     'diagnostico' => itform_pdf_plain($_POST['diagnostico']),
     'trabajo' => itform_pdf_plain($_POST['trabajoRealizado']),
     'observaciones' => itform_pdf_plain($_POST['observaciones']),
     'recibido' => itform_pdf_plain($_POST['recibidoConforme']),
     'firma' => $tecnicoNombre,
+    'cargo' => itform_pdf_plain($_SESSION['cargo'] ?? ''),
 ];
 
 try {

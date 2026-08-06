@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
     password_hash VARCHAR(255) NOT NULL,
     email VARCHAR(255) NOT NULL,
     nombre_completo VARCHAR(255) NOT NULL,
+    cargo VARCHAR(150) DEFAULT '',
     rol ENUM('admin', 'tecnico', 'usuario') DEFAULT 'tecnico',
     activo TINYINT(1) DEFAULT 1,
     ultimo_acceso DATETIME DEFAULT NULL,

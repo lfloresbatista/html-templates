@@ -23,9 +23,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $action = $_POST['action'] ?? '';
         try {
             if ($action === 'update_estado') {
+                if (!isAdmin()) {
+                    throw new RuntimeException('Solo el administrador puede cambiar estados');
+                }
                 $id = (int) ($_POST['id'] ?? 0);
                 $estado = $_POST['estado'] ?? '';
-                $allowed = ['pendiente', 'en_proceso', 'completado', 'cancelado'];
+                $allowed = ['pendiente', 'revision', 'completado', 'cancelado'];
                 if ($id > 0 && in_array($estado, $allowed, true)) {
                     $db->prepare('UPDATE servicios SET estado = :e, fecha_actualizacion = :f WHERE id = :id')
                         ->execute([':e' => $estado, ':f' => date('Y-m-d H:i:s'), ':id' => $id]);
@@ -42,6 +45,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $svc = $stmt->fetch();
                 if (!$svc) {
                     throw new RuntimeException('Servicio no encontrado');
+                }
+                // Solo un firmado: si ya tiene ruta_pdf, rechazar
+                if (!empty($svc['ruta_pdf'])) {
+                    throw new RuntimeException('Este servicio ya tiene un documento firmado. Elimínelo antes de subir otro.');
                 }
                 $file = $_FILES['informe_firmado'] ?? null;
                 if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
@@ -63,20 +70,54 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $basename = itform_signed_pdf_basename($svc);
                 $destRel = 'storage/firmados/' . $basename;
                 $dest = dirname(__DIR__) . '/' . $destRel;
-                // si ya existe, sobrescribe
                 if (!move_uploaded_file($file['tmp_name'], $dest)) {
                     throw new RuntimeException('No se pudo guardar el PDF firmado');
                 }
                 @chmod($dest, 0640);
                 $db->prepare(
-                    'UPDATE servicios SET pdf_generado = 1, ruta_pdf = :r, fecha_actualizacion = :f WHERE id = :id'
+                    'UPDATE servicios SET pdf_generado = 1, ruta_pdf = :r, estado = :e, fecha_actualizacion = :f WHERE id = :id'
                 )->execute([
                     ':r' => $destRel,
+                    ':e' => 'revision',
                     ':f' => date('Y-m-d H:i:s'),
                     ':id' => $id,
                 ]);
-                logAudit($db, currentUserId(), 'UPLOAD', 'servicios', $id, 'Informe firmado: ' . $basename);
+                logAudit($db, currentUserId(), 'UPLOAD', 'servicios', $id, 'Informe firmado: ' . $basename . ' → revisión');
                 $msg = 'Informe firmado subido: ' . $basename;
+            } elseif ($action === 'approve' && isAdmin()) {
+                $id = (int) ($_POST['id'] ?? 0);
+                $stmt = $db->prepare('SELECT id, estado FROM servicios WHERE id = :id');
+                $stmt->execute([':id' => $id]);
+                $svc = $stmt->fetch();
+                if (!$svc) {
+                    throw new RuntimeException('Servicio no encontrado');
+                }
+                if ($svc['estado'] !== 'revision') {
+                    throw new RuntimeException('Solo se puede aprobar servicios en revisión');
+                }
+                $db->prepare('UPDATE servicios SET estado = :e, fecha_actualizacion = :f WHERE id = :id')
+                    ->execute([':e' => 'completado', ':f' => date('Y-m-d H:i:s'), ':id' => $id]);
+                logAudit($db, currentUserId(), 'APPROVE', 'servicios', $id, 'Admin aprobó → completado');
+                $msg = 'Servicio aprobado → completado';
+            } elseif ($action === 'delete_firmado') {
+                $id = (int) ($_POST['id'] ?? 0);
+                $stmt = $db->prepare('SELECT id, estado, ruta_pdf FROM servicios WHERE id = :id');
+                $stmt->execute([':id' => $id]);
+                $svc = $stmt->fetch();
+                if (!$svc) {
+                    throw new RuntimeException('Servicio no encontrado');
+                }
+                if ($svc['estado'] === 'completado') {
+                    throw new RuntimeException('No se puede eliminar un firmado ya aprobado');
+                }
+                $ruta = dirname(__DIR__) . '/' . ltrim(str_replace(['..', '\\'], '', (string) ($svc['ruta_pdf'] ?? '')), '/');
+                if (is_file($ruta)) {
+                    @unlink($ruta);
+                }
+                $db->prepare('UPDATE servicios SET pdf_generado = 0, ruta_pdf = NULL, estado = :e, fecha_actualizacion = :f WHERE id = :id')
+                    ->execute([':e' => 'pendiente', ':f' => date('Y-m-d H:i:s'), ':id' => $id]);
+                logAudit($db, currentUserId(), 'DELETE_FIRMADO', 'servicios', $id, 'Firmado eliminado → pendiente');
+                $msg = 'Documento firmado eliminado. Puede volver a subir.';
             }
         } catch (Throwable $e) {
             error_log($e->getMessage());
@@ -115,7 +156,7 @@ require __DIR__ . '/layout_header.php';
             <input type="search" name="q" placeholder="Cliente, ticket, N°..." value="<?php echo itform_e($q); ?>">
             <select name="estado">
                 <option value="">Todos los estados</option>
-                <?php foreach (['pendiente','en_proceso','completado','cancelado'] as $e): ?>
+                <?php foreach (['pendiente','revision','completado','cancelado'] as $e): ?>
                 <option value="<?php echo $e; ?>" <?php echo $estadoF === $e ? 'selected' : ''; ?>><?php echo $e; ?></option>
                 <?php endforeach; ?>
             </select>
@@ -140,9 +181,24 @@ require __DIR__ . '/layout_header.php';
                         <a class="btn-sm btn-secondary" href="print_servicio.php?id=<?php echo (int) $s['id']; ?>" target="_blank" title="Reimprimir PDF del proyecto">🖨 Reimprimir</a>
                         <?php if (!empty($s['ruta_pdf'])): ?>
                         <a class="btn-sm btn-primary" href="download_firmado.php?id=<?php echo (int) $s['id']; ?>" title="Descargar PDF firmado">📄 Firmado</a>
+                        <?php if (isAdmin() && $s['estado'] === 'revision'): ?>
+                        <form method="post" style="margin-top:2px;">
+                            <input type="hidden" name="csrf_token" value="<?php echo itform_e($csrf); ?>">
+                            <input type="hidden" name="action" value="approve">
+                            <input type="hidden" name="id" value="<?php echo (int) $s['id']; ?>">
+                            <button class="btn-sm btn-approve" type="submit" onclick="return confirm('¿Aprobar este informe firmado? Pasará a completado.')" title="Aprobar informe firmado">✅ Aprobar</button>
+                        </form>
+                        <?php endif; ?>
+                        <?php if ($s['estado'] !== 'completado'): ?>
+                        <form method="post" style="margin-top:2px;" onsubmit="return confirm('¿Eliminar el documento firmado? Podrá volver a subir uno nuevo.')">
+                            <input type="hidden" name="csrf_token" value="<?php echo itform_e($csrf); ?>">
+                            <input type="hidden" name="action" value="delete_firmado">
+                            <input type="hidden" name="id" value="<?php echo (int) $s['id']; ?>">
+                            <button class="btn-sm btn-danger" type="submit" title="Eliminar firmado (solo antes de aprobar)">🗑 Eliminar</button>
+                        </form>
+                        <?php endif; ?>
                         <?php else: ?>
                         <span class="muted">Sin firmado</span>
-                        <?php endif; ?>
                         <form method="post" enctype="multipart/form-data" class="upload-firmado">
                             <input type="hidden" name="csrf_token" value="<?php echo itform_e($csrf); ?>">
                             <input type="hidden" name="action" value="upload_firmado">
@@ -150,19 +206,24 @@ require __DIR__ . '/layout_header.php';
                             <input type="file" name="informe_firmado" accept="application/pdf,.pdf" required>
                             <button class="btn-sm btn-ok" type="submit" title="Sube el PDF firmado; se renombra a …-FIRMADO.pdf">⬆ Subir firmado</button>
                         </form>
+                        <?php endif; ?>
                     </td>
                     <td>
+                        <?php if (isAdmin()): ?>
                         <form method="post" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                             <input type="hidden" name="csrf_token" value="<?php echo itform_e($csrf); ?>">
                             <input type="hidden" name="action" value="update_estado">
                             <input type="hidden" name="id" value="<?php echo (int) $s['id']; ?>">
                             <select name="estado">
-                                <?php foreach (['pendiente','en_proceso','completado','cancelado'] as $e): ?>
+                                <?php foreach (['pendiente','revision','completado','cancelado'] as $e): ?>
                                 <option value="<?php echo $e; ?>" <?php echo $s['estado'] === $e ? 'selected' : ''; ?>><?php echo $e; ?></option>
                                 <?php endforeach; ?>
                             </select>
                             <button class="btn-sm btn-primary" type="submit">OK</button>
                         </form>
+                        <?php else: ?>
+                        <span class="badge badge-<?php echo itform_e($s['estado']); ?>"><?php echo itform_e($s['estado']); ?></span>
+                        <?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -171,7 +232,7 @@ require __DIR__ . '/layout_header.php';
             <?php endif; ?>
             </tbody>
         </table>
-        <p class="hint-firmado">El archivo firmado se guarda como <code>NUMERO_CLIENTE-FIRMADO.pdf</code> (ej. <code>2026-07-0001_INSTITUTO-FIRMADO.pdf</code>).</p>
+        <p class="hint-firmado">El archivo firmado se guarda como <code>INICIALES_DDMMAAAA_HHMM-FIRMADO.pdf</code>.</p>
     </div>
 </div>
 <?php require __DIR__ . '/layout_footer.php'; ?>

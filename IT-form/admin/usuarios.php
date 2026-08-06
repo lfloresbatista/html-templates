@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $nombre = trim((string) ($_POST['nombre_completo'] ?? ''));
                 $rol = $_POST['rol'] ?? 'tecnico';
                 $activo = isset($_POST['activo']) ? 1 : 0;
+                $cargo = trim((string) ($_POST['cargo'] ?? ''));
                 $password = (string) ($_POST['password'] ?? '');
                 if (!in_array($rol, ['admin', 'tecnico', 'usuario'], true)) {
                     throw new RuntimeException('Rol inválido');
@@ -32,11 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     $hash = password_hash($password, PASSWORD_DEFAULT);
                     $db->prepare(
-                        'INSERT INTO usuarios (username, password_hash, email, nombre_completo, rol, activo)
-                         VALUES (:u,:p,:e,:n,:r,:a)'
+                        'INSERT INTO usuarios (username, password_hash, email, nombre_completo, cargo, rol, activo)
+                         VALUES (:u,:p,:e,:n,:c,:r,:a)'
                     )->execute([
                         ':u' => $username, ':p' => $hash, ':e' => $email,
-                        ':n' => $nombre, ':r' => $rol, ':a' => $activo,
+                        ':n' => $nombre, ':c' => $cargo, ':r' => $rol, ':a' => $activo,
                     ]);
                     $id = (int) $db->lastInsertId();
                     logAudit($db, currentUserId(), 'CREATE', 'usuarios', $id, "Usuario {$username}");
@@ -49,18 +50,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         $hash = password_hash($password, PASSWORD_DEFAULT);
                         $db->prepare(
-                            'UPDATE usuarios SET username=:u, email=:e, nombre_completo=:n, rol=:r, activo=:a,
+                            'UPDATE usuarios SET username=:u, email=:e, nombre_completo=:n, cargo=:c, rol=:r, activo=:a,
                              password_hash=:p, fecha_actualizacion=:f WHERE id=:id'
                         )->execute([
-                            ':u' => $username, ':e' => $email, ':n' => $nombre, ':r' => $rol,
+                            ':u' => $username, ':e' => $email, ':n' => $nombre, ':c' => $cargo, ':r' => $rol,
                             ':a' => $activo, ':p' => $hash, ':f' => date('Y-m-d H:i:s'), ':id' => $id,
                         ]);
                     } else {
                         $db->prepare(
-                            'UPDATE usuarios SET username=:u, email=:e, nombre_completo=:n, rol=:r, activo=:a,
+                            'UPDATE usuarios SET username=:u, email=:e, nombre_completo=:n, cargo=:c, rol=:r, activo=:a,
                              fecha_actualizacion=:f WHERE id=:id'
                         )->execute([
-                            ':u' => $username, ':e' => $email, ':n' => $nombre, ':r' => $rol,
+                            ':u' => $username, ':e' => $email, ':n' => $nombre, ':c' => $cargo, ':r' => $rol,
                             ':a' => $activo, ':f' => date('Y-m-d H:i:s'), ':id' => $id,
                         ]);
                     }
@@ -85,7 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $usuarios = $db->query(
-    'SELECT id, username, email, nombre_completo, rol, activo, ultimo_acceso, fecha_creacion
+    'SELECT id, username, email, nombre_completo, cargo, rol, activo, ultimo_acceso, fecha_creacion
      FROM usuarios ORDER BY id'
 )->fetchAll();
 $editId = isset($_GET['edit']) ? (int) $_GET['edit'] : 0;
@@ -129,6 +130,11 @@ require __DIR__ . '/layout_header.php';
                     <input name="nombre_completo" required value="<?php echo itform_e($editUser['nombre_completo'] ?? ''); ?>">
                 </div>
                 <div class="form-group">
+                <div class="form-group">
+                    <label>Cargo</label>
+                    <input name="cargo" value="<?php echo itform_e($editUser['cargo'] ?? ''); ?>" placeholder="Ej: Ingeniero de Redes">
+                </div>
+                <div class="form-group">
                     <label>Rol</label>
                     <select name="rol">
                         <?php foreach (['admin','tecnico','usuario'] as $r): ?>
@@ -158,7 +164,7 @@ require __DIR__ . '/layout_header.php';
         <table>
             <thead>
                 <tr>
-                    <th>ID</th><th>Usuario</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Acciones</th>
+                    <th>ID</th><th>Usuario</th><th>Nombre</th><th>Cargo</th><th>Email</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th>Acciones</th>
                 </tr>
             </thead>
             <tbody>
@@ -167,6 +173,7 @@ require __DIR__ . '/layout_header.php';
                     <td><?php echo (int) $u['id']; ?></td>
                     <td><?php echo itform_e($u['username']); ?></td>
                     <td><?php echo itform_e($u['nombre_completo']); ?></td>
+                    <td><?php echo itform_e($u['cargo'] ?? ''); ?></td>
                     <td><?php echo itform_e($u['email']); ?></td>
                     <td><span class="badge badge-<?php echo itform_e($u['rol']); ?>"><?php echo itform_e($u['rol']); ?></span></td>
                     <td><?php echo (int) $u['activo'] ? '✅ Activo' : '❌ Inactivo'; ?></td>
